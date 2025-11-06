@@ -8,7 +8,7 @@ import os
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from scraper_agent import update_knowledge_base
+from agents import update_knowledge_base
 
 # Test credentials
 USER_ID = 1
