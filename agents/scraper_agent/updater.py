@@ -4,7 +4,6 @@ Manages course material updates from Moodle and Exambase
 """
 
 from datetime import datetime, timedelta
-import stat
 import time
 from typing import List, Dict, Tuple
 import sys

@@ -17,7 +17,6 @@ from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException, WebDriverException
 import requests
 
-from rag_scraper.moodle import CONNECT_TIME_OUT
 from .logger import get_logger
 
 CONNECT_TIME_OUT = 5  # seconds
