@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import AsyncGenerator
 
-from agents import AgentType
+from agents import AgentType, update_knowledge_base
 from agents.llm import LLM
 from dao.user import UserDAO
 from rag_scraper.scraper import RAGScraper
@@ -51,7 +51,7 @@ class ChatAgent:
         agent_tasks = []
         for agent_type in agent_types:
             if agent_type == AgentType.SCRAPER:
-                agent_tasks.append(self._handle_scraper_agent(user_request, user_id=user_id, user_email=user_email))
+                agent_tasks.append(self._handle_scraper_agent(user_id=user_id, user_email=user_email))
             elif agent_type == AgentType.PLANNER:
                 agent_tasks.append(self._handle_planner_agent(user_request))
             elif agent_type == AgentType.RAG:
@@ -95,9 +95,7 @@ class ChatAgent:
         async for chunk in self.llm.static_chat_stream(model_alias="default", messages=messages):
             yield chunk
 
-    async def _handle_scraper_agent(
-        self, user_request: str, user_id: int | None = None, user_email: str | None = None
-    ) -> dict | None:
+    async def _handle_scraper_agent(self, user_id: int | None = None, user_email: str | None = None) -> dict | None:
         """
         Handle requests routed to the scraper agent
 
@@ -114,18 +112,20 @@ class ChatAgent:
         if user_info is None:
             return {"success": False, "error": "无法获取用户信息，请提供有效的 user_id 或 user_email 参数。"}
 
-        # Initialize scraper with user credentials
-        if self.agent_tools["scraper"] is None:
-            self._initialize_scraper(email=user_info["user_email"], password=user_info["pwd"])
-
-        # Execute scraper
         try:
-            # Run synchronous scrape_all in thread pool to avoid blocking
-            scrape_result = await asyncio.to_thread(self.agent_tools["scraper"].scrape_all)
+            # Run synchronous update_knowledge_base in thread pool to avoid blocking
+            scrape_result = await asyncio.to_thread(
+                update_knowledge_base,
+                user_id=user_info["id"],
+                user_email=user_info["user_email"],
+                user_password=user_info["pwd"],
+                headless=True,
+                verbose=False,
+            )
 
-            return {"success": True, "data": scrape_result, "summary": f"成功抓取数据: {scrape_result}"}
+            return {"success": True, "data": scrape_result, "summary": f"成功更新知识库: {scrape_result}"}
         except Exception as e:
-            return {"success": False, "error": f"抓取数据时出错: {str(e)}"}
+            return {"success": False, "error": f"更新知识库时出错: {str(e)}"}
 
     async def _handle_planner_agent(self, user_request: str) -> dict | None:
         """
