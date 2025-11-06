@@ -1,5 +1,5 @@
-.idea/
 __pycache__/
-*.pyc
-.env
-.venv
+*/__pycache__/
+knowledge_base/
+*.log
+*.md

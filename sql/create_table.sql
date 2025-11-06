@@ -16,11 +16,3 @@ CREATE TABLE IF NOT EXISTS user_courses (
     INDEX idx_user_id (user_id),
     INDEX idx_course_id (course_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- Create user table
-CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_email VARCHAR(100) NOT NULL UNIQUE,
-    pwd VARCHAR(255) DEFAULT '',
-    INDEX idx_user_email (user_email)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -14,9 +14,12 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import TimeoutException, WebDriverException
 import requests
+
 from .logger import get_logger
 
+CONNECT_TIME_OUT = 5  # seconds
 
 class ExambaseScraper:
     def __init__(self, username, password, headless=False, verbose=False):
@@ -31,15 +34,21 @@ class ExambaseScraper:
         """
         self.username = username
         self.password = password
+        self.headless = headless
         self.verbose = verbose
         self.logger = get_logger(log_file="rag_scraper.log", verbose=verbose)
         self.exambase_url = (
             "https://exambase-lib-hku-hk.eproxy.lib.hku.hk/exhibits/show/exam/home"
         )
 
+        # Initialize browser
+        self._initialize_driver()
+
+    def _initialize_driver(self):
+        """Initialize or reinitialize the Chrome WebDriver"""
         # Setup Chrome options
         chrome_options = Options()
-        if headless:
+        if self.headless:
             chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
@@ -50,9 +59,9 @@ class ExambaseScraper:
         chrome_options.add_argument("--disable-images")
         chrome_options.add_argument("--blink-settings=imagesEnabled=false")
         chrome_options.add_argument("--disable-css")
-        chrome_options.add_experimental_option("prefs", {
-            "profile.default_content_setting_values.stylesheets": 2
-        })
+        chrome_options.add_experimental_option(
+            "prefs", {"profile.default_content_setting_values.stylesheets": 2}
+        )
         chrome_options.add_argument("--fast")
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-plugins")
@@ -62,7 +71,6 @@ class ExambaseScraper:
         chrome_options.add_argument("--disable-preconnect")
         chrome_options.add_argument("--disable-javascript")
         chrome_options.add_argument("--disable-dom-distiller")
-
 
         # Disable download dialog
         prefs = {
@@ -74,7 +82,7 @@ class ExambaseScraper:
         chrome_options.add_experimental_option("prefs", prefs)
 
         self.driver = webdriver.Chrome(options=chrome_options)
-        self.wait = WebDriverWait(self.driver, 20)
+        self.wait = WebDriverWait(self.driver, CONNECT_TIME_OUT)
 
     def _log(self, message):
         """Print message if verbose mode is enabled"""
@@ -82,113 +90,158 @@ class ExambaseScraper:
             self.logger.info(message, force=True)
 
     def login(self):
-        """Login to HKU Library authentication system"""
-        try:
-            self._log("Accessing Exambase...")
-            self.driver.get(self.exambase_url)
-            time.sleep(1)
+        """Login to HKU Library authentication system with retry logic"""
+        max_retries = 3
 
-            # Check if redirected to login page
-            current_url = self.driver.current_url
-            self._log(f"Current URL: {current_url}")
+        for attempt in range(1, max_retries + 1):
+            try:
+                if attempt > 1:
+                    self.logger.warning(
+                        f"🔄 Retry attempt {attempt}/{max_retries} - Restarting browser..."
+                    )
+                    # Close and reinitialize browser
+                    try:
+                        self.driver.quit()
+                    except:
+                        pass
+                    self._initialize_driver()
+                    time.sleep(2)
 
-            if "authenticate" in current_url or "lib.hku.hk" in current_url:
-                self._log("Detected library authentication page")
+                self._log(f"Accessing Exambase... (Attempt {attempt}/{max_retries})")
 
-                # Wait for page to load
+                # Set page load timeout
+                self.driver.set_page_load_timeout(CONNECT_TIME_OUT)
+                try:
+                    self.driver.get(self.exambase_url)
+                except TimeoutException:
+                    raise TimeoutException("Page load timeout: Exambase")
                 time.sleep(1)
 
-                # Enter UID - try multiple selectors
-                self._log("Entering UID...")
-                uid_input = None
-                try:
-                    uid_input = self.wait.until(
-                        EC.presence_of_element_located((By.NAME, "userid"))
-                    )
-                except:
+                # Check if redirected to login page with timeout
+                current_url = self.driver.current_url
+                self._log(f"Current URL: {current_url}")
+
+                if "authenticate" in current_url or "lib.hku.hk" in current_url:
+                    self._log("Detected library authentication page")
+                    time.sleep(1)
+
+                    # Enter UID with timeout
+                    self._log("Entering UID...")
+                    uid_input = None
                     try:
-                        uid_input = self.driver.find_element(By.ID, "user_id")
-                    except:
-                        try:
-                            uid_input = self.driver.find_element(
-                                By.CSS_SELECTOR, "input[type='text']"
-                            )
-                        except:
-                            pass
-
-                if uid_input:
-                    uid_input.clear()
-                    uid_input.send_keys(self.username)
-                    self._log(f"Entered UID: {self.username}")
-                else:
-                    self._log("✗ Could not find UID input field")
-                    return False
-
-                # Enter PIN/Password - try multiple selectors
-                self._log("Entering password...")
-                pin_input = None
-                try:
-                    pin_input = self.driver.find_element(By.ID, "password")
-                except:
-                    try:
-                        pin_input = self.driver.find_element(By.NAME, "password")
-                    except:
-                        try:
-                            pin_input = self.driver.find_element(
-                                By.CSS_SELECTOR, "input[type='password']"
-                            )
-                        except:
-                            pass
-
-                if pin_input:
-                    pin_input.clear()
-                    pin_input.send_keys(self.password)
-                    self._log("Entered password")
-                else:
-                    self._log("✗ Could not find password input field")
-                    return False
-
-                # Click submit button - try multiple selectors
-                self._log("Clicking submit...")
-                submit_btn = None
-                try:
-                    submit_btn = self.driver.find_element(By.NAME, "submit")
-                except:
-                    try:
-                        submit_btn = self.driver.find_element(
-                            By.CSS_SELECTOR, "input[type='submit']"
+                        uid_input = WebDriverWait(self.driver, CONNECT_TIME_OUT).until(
+                            EC.presence_of_element_located((By.NAME, "userid"))
                         )
-                    except:
+                    except TimeoutException:
+                        try:
+                            uid_input = self.driver.find_element(By.ID, "user_id")
+                        except:
+                            try:
+                                uid_input = self.driver.find_element(
+                                    By.CSS_SELECTOR, "input[type='text']"
+                                )
+                            except:
+                                raise TimeoutException("Could not find UID input field")
+
+                    if uid_input:
+                        uid_input.clear()
+                        uid_input.send_keys(self.username)
+                        self._log(f"Entered UID: {self.username}")
+                    else:
+                        raise Exception("UID input field not found")
+
+                    # Enter password with timeout
+                    self._log("Entering password...")
+                    pin_input = None
+                    try:
+                        pin_input = WebDriverWait(self.driver, CONNECT_TIME_OUT).until(
+                            EC.presence_of_element_located((By.ID, "password"))
+                        )
+                    except TimeoutException:
+                        try:
+                            pin_input = self.driver.find_element(By.NAME, "password")
+                        except:
+                            try:
+                                pin_input = self.driver.find_element(
+                                    By.CSS_SELECTOR, "input[type='password']"
+                                )
+                            except:
+                                raise TimeoutException(
+                                    "Could not find password input field"
+                                )
+
+                    if pin_input:
+                        pin_input.clear()
+                        pin_input.send_keys(self.password)
+                        self._log("Entered password")
+                    else:
+                        raise Exception("Password input field not found")
+
+                    # Click submit button with timeout
+                    self._log("Clicking submit...")
+                    submit_btn = None
+                    try:
+                        submit_btn = WebDriverWait(self.driver, CONNECT_TIME_OUT).until(
+                            EC.element_to_be_clickable((By.NAME, "submit"))
+                        )
+                    except TimeoutException:
                         try:
                             submit_btn = self.driver.find_element(
-                                By.XPATH, "//button[@type='submit']"
+                                By.CSS_SELECTOR, "input[type='submit']"
                             )
                         except:
-                            pass
+                            try:
+                                submit_btn = self.driver.find_element(
+                                    By.XPATH, "//button[@type='submit']"
+                                )
+                            except:
+                                raise TimeoutException("Could not find submit button")
 
-                if submit_btn:
-                    submit_btn.click()
-                    self._log("Clicked submit button")
+                    if submit_btn:
+                        submit_btn.click()
+                        self._log("Clicked submit button")
+                    else:
+                        raise Exception("Submit button not found")
+
+                    # Wait for redirect to Exambase with timeout
+                    time.sleep(1)
+                    max_wait = 5
+                    wait_count = 0
+                    while wait_count < max_wait:
+                        current_url = self.driver.current_url
+                        if "exambase" in current_url:
+                            self._log("✓ Successfully logged in to Exambase")
+                            self.logger.info("✅ Exambase login successful", force=True)
+                            return True
+                        time.sleep(1)
+                        wait_count += 1
+
+                    raise TimeoutException(
+                        f"Timeout: Failed to redirect to Exambase. Current URL: {self.driver.current_url}"
+                    )
+
                 else:
-                    self._log("✗ Could not find submit button")
-                    return False  # Wait for redirect to Exambase
-                time.sleep(1)
-
-                # Check if login successful
-                current_url = self.driver.current_url
-                if "exambase" in current_url:
-                    self._log("✓ Successfully logged in to Exambase")
+                    # Already on Exambase, no login needed
+                    self._log("✓ Already on Exambase, no login needed")
+                    self.logger.info("✅ Exambase access successful", force=True)
                     return True
-                else:
-                    self._log(f"Login may have failed. Current URL: {current_url}")
-                    return False
-            else:
-                self._log("Already at Exambase (no authentication needed)")
-                return True
 
-        except Exception as e:
-            self._log(f"✗ Login failed: {str(e)}")
-            return False
+            except (TimeoutException, WebDriverException, Exception) as e:
+                error_msg = str(e)
+                self.logger.warning(
+                    f"⚠️ Login attempt {attempt}/{max_retries} failed: {error_msg}"
+                )
+
+                if attempt >= max_retries:
+                    self.logger.error(
+                        f"❌ Exambase login failed after {max_retries} attempts. Please check your network and credentials."
+                    )
+                    return False
+
+                # Wait before retry
+                time.sleep(2)
+
+        return False
 
     def get_course_codes_from_knowledge_base(self):
         """

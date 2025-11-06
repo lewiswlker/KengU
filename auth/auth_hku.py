@@ -266,8 +266,8 @@ if __name__ == "__main__":
     print("=" * 50)
 
     # Get email and password from user input
-    test_email = "u3665467@connect.hku.hk"
-    test_password = "Renliubo1891412"
+    test_email = "your hku email"
+    test_password = "your hku password"
 
     print("\nStarting verification...")
     result = verify_hku_credentials(

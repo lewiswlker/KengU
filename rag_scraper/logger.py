@@ -27,11 +27,20 @@ class RAGLogger:
         self.verbose = verbose
         self.lock = threading.Lock()
 
-        # Create or clear log file
-        with open(self.log_file, "w", encoding="utf-8") as f:
-            f.write(
-                f"=== RAG Scraper Log Started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n\n"
-            )
+        # Ensure log file exists and append session start marker
+        try:
+            # Create directory if it doesn't exist
+            log_dir = os.path.dirname(log_file)
+            if log_dir and not os.path.exists(log_dir):
+                os.makedirs(log_dir, exist_ok=True)
+
+            # Append session start marker (not overwrite)
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(
+                    f"\n=== RAG Scraper Log Session Started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n\n"
+                )
+        except Exception as e:
+            print(f"Warning: Could not initialize log file: {e}")
 
     def log(self, message, force=False, level="INFO"):
         """
