@@ -35,75 +35,75 @@ def main():
     ]
 
     # Step 1: Insert courses
-    print_section("Step 1: 批量插入课程 (insert_names)")
+    print_section("Step 1: Batch Insert Courses (insert_names)")
     try:
         course_ids = course_dao.insert_names(courses)
-        print(f"✅ 成功插入 {len(course_ids)} 门课程")
-        print(f"生成的课程ID列表: {course_ids}")
+        print(f"✅ Successfully inserted {len(course_ids)} courses")
+        print(f"Generated Course ID List: {course_ids}")
         for i, (name, cid) in enumerate(zip(courses, course_ids), 1):
             print(f"  [{i}] ID={cid}: {name[:60]}...")
     except RuntimeError as e:
-        print(f"❌ 插入失败: {e}")
+        print(f"❌ Insertion failed: {e}")
         return
 
     # Step 2: Find course IDs by names
-    print_section("Step 2: 根据课程名查询课程ID (find_id_by_name)")
+    print_section("Step 2: Query Course ID by Course Name (find_id_by_name)")
     found_ids = []
     for i, course_name in enumerate(courses, 1):
         try:
             course_id = course_dao.find_id_by_name(course_name)
             found_ids.append(course_id)
-            print(f"  [{i}] 课程名: {course_name[:50]}...")
-            print(f"       课程ID: {course_id}")
+            print(f"  [{i}] Course Name: {course_name[:50]}...")
+            print(f"       Course ID: {course_id}")
         except RuntimeError as e:
-            print(f"  [{i}] ❌ 查询失败: {e}")
+            print(f"  [{i}] ❌ Query failed: {e}")
 
     if not found_ids or None in found_ids:
-        print("❌ 部分课程ID查询失败，无法继续后续测试")
+        print("❌ Some course IDs failed to query, cannot continue subsequent tests")
         return
 
-    print(f"\n✅ 查询到的课程ID列表: {found_ids}")
+    print(f"\n✅ Queried Course ID List: {found_ids}")
 
     # Step 3: Insert user-course mappings
-    print_section("Step 3: 插入用户-课程关系 (insert_user_courses)")
-    print(f"用户ID: {user_id}")
+    print_section("Step 3: Insert User-Course Relationships (insert_user_courses)")
+    print(f"User ID: {user_id}")
     success_count = 0
     for i, course_id in enumerate(found_ids, 1):
         try:
             record_id = user_course_dao.insert_user_courses(user_id, course_id)
-            print(f"  [{i}] ✅ 用户 {user_id} <-> 课程 {course_id}: 记录ID={record_id}")
+            print(f"  [{i}] ✅ User {user_id} <-> Course {course_id}: Record ID={record_id}")
             success_count += 1
         except RuntimeError as e:
-            print(f"  [{i}] ❌ 插入失败 (用户 {user_id} <-> 课程 {course_id}): {e}")
+            print(f"  [{i}] ❌ Insertion failed (User {user_id} <-> Course {course_id}): {e}")
 
-    print(f"\n✅ 成功插入 {success_count}/{len(found_ids)} 条用户-课程关系")
+    print(f"\n✅ Successfully inserted {success_count}/{len(found_ids)} user-course relationships")
 
     # Step 4: Query update times by course ID (before update)
-    print_section("Step 4: 根据课程ID查询更新时间 (find_update_time_byid) - 更新前")
+    print_section("Step 4: Query Update Times by Course ID (find_update_time_byid) - Before Update")
     for i, course_id in enumerate(found_ids, 1):
         try:
             moodle_time, exambase_time = course_dao.find_update_time_byid(course_id)
-            print(f"  [{i}] 课程ID {course_id}:")
-            print(f"       Moodle更新时间: {moodle_time}")
-            print(f"       Exambase更新时间: {exambase_time}")
+            print(f"  [{i}] Course ID {course_id}:")
+            print(f"       Moodle Update Time: {moodle_time}")
+            print(f"       Exambase Update Time: {exambase_time}")
         except RuntimeError as e:
-            print(f"  [{i}] ❌ 查询失败 (课程ID {course_id}): {e}")
+            print(f"  [{i}] ❌ Query failed (Course ID {course_id}): {e}")
 
     # Step 5: Query update times by course name (before update)
-    print_section("Step 5: 根据课程名查询更新时间 (find_update_time_byname) - 更新前")
+    print_section("Step 5: Query Update Times by Course Name (find_update_time_byname) - Before Update")
     for i, course_name in enumerate(courses, 1):
         try:
             moodle_time, exambase_time = course_dao.find_update_time_byname(course_name)
-            print(f"  [{i}] 课程名: {course_name[:50]}...")
-            print(f"       Moodle更新时间: {moodle_time}")
-            print(f"       Exambase更新时间: {exambase_time}")
+            print(f"  [{i}] Course Name: {course_name[:50]}...")
+            print(f"       Moodle Update Time: {moodle_time}")
+            print(f"       Exambase Update Time: {exambase_time}")
         except RuntimeError as e:
-            print(f"  [{i}] ❌ 查询失败: {e}")
+            print(f"  [{i}] ❌ Query failed: {e}")
 
     # Step 6: Update all courses' timestamps to now
-    print_section("Step 6: 更新所有课程的时间戳为当前时间")
+    print_section("Step 6: Update All Courses' Timestamps to Current Time")
     current_time = datetime.now()
-    print(f"当前时间: {current_time}")
+    print(f"Current Time: {current_time}")
 
     moodle_success = 0
     exambase_success = 0
@@ -113,31 +113,31 @@ def main():
             # Update Moodle time
             if course_dao.update_moodle_time(course_id, current_time):
                 moodle_success += 1
-                print(f"  [{i}] ✅ 课程ID {course_id}: Moodle时间已更新")
+                print(f"  [{i}] ✅ Course ID {course_id}: Moodle time updated successfully")
             else:
-                print(f"  [{i}] ⚠️ 课程ID {course_id}: Moodle时间更新失败(0行受影响)")
+                print(f"  [{i}] ⚠️ Course ID {course_id}: Moodle time update failed (0 rows affected)")
 
             # Update Exambase time
             if course_dao.update_exambase_time(course_id, current_time):
                 exambase_success += 1
-                print(f"       ✅ 课程ID {course_id}: Exambase时间已更新")
+                print(f"       ✅ Course ID {course_id}: Exambase time updated successfully")
             else:
-                print(f"       ⚠️ 课程ID {course_id}: Exambase时间更新失败(0行受影响)")
+                print(f"       ⚠️ Course ID {course_id}: Exambase time update failed (0 rows affected)")
 
         except RuntimeError as e:
-            print(f"  [{i}] ❌ 更新失败 (课程ID {course_id}): {e}")
+            print(f"  [{i}] ❌ Update failed (Course ID {course_id}): {e}")
 
-    print(f"\n✅ Moodle时间: {moodle_success}/{len(found_ids)} 成功")
-    print(f"✅ Exambase时间: {exambase_success}/{len(found_ids)} 成功")
+    print(f"\n✅ Moodle Time Updates: {moodle_success}/{len(found_ids)} successful")
+    print(f"✅ Exambase Time Updates: {exambase_success}/{len(found_ids)} successful")
 
     # Step 7: Query update times by course ID (after update)
-    print_section("Step 7: 根据课程ID查询更新时间 (find_update_time_byid) - 更新后")
+    print_section("Step 7: Query Update Times by Course ID (find_update_time_byid) - After Update")
     for i, course_id in enumerate(found_ids, 1):
         try:
             moodle_time, exambase_time = course_dao.find_update_time_byid(course_id)
-            print(f"  [{i}] 课程ID {course_id}:")
-            print(f"       Moodle更新时间: {moodle_time}")
-            print(f"       Exambase更新时间: {exambase_time}")
+            print(f"  [{i}] Course ID {course_id}:")
+            print(f"       Moodle Update Time: {moodle_time}")
+            print(f"       Exambase Update Time: {exambase_time}")
 
             # Verify times match current_time
             if moodle_time and exambase_time:
@@ -146,22 +146,22 @@ def main():
                 exambase_diff = abs((exambase_time - current_time).total_seconds())
 
                 if moodle_diff <= 1 and exambase_diff <= 1:
-                    print(f"       ✅ 时间戳验证通过")
+                    print(f"       ✅ Timestamp verification passed")
                 else:
                     print(
-                        f"       ⚠️ 时间戳差异: Moodle={moodle_diff:.2f}s, Exambase={exambase_diff:.2f}s"
+                        f"       ⚠️ Timestamp difference: Moodle={moodle_diff:.2f}s, Exambase={exambase_diff:.2f}s"
                     )
         except RuntimeError as e:
-            print(f"  [{i}] ❌ 查询失败 (课程ID {course_id}): {e}")
+            print(f"  [{i}] ❌ Query failed (Course ID {course_id}): {e}")
 
     # Summary
-    print_section("测试总结")
-    print(f"✅ 所有测试步骤已完成")
-    print(f"   - 插入课程数: {len(course_ids)}")
-    print(f"   - 查询课程ID数: {len(found_ids)}")
-    print(f"   - 插入用户-课程关系数: {success_count}")
-    print(f"   - 更新Moodle时间数: {moodle_success}")
-    print(f"   - 更新Exambase时间数: {exambase_success}")
+    print_section("Test Summary")
+    print(f"✅ All test steps completed")
+    print(f"   - Inserted Courses: {len(course_ids)}")
+    print(f"   - Queried Course IDs: {len(found_ids)}")
+    print(f"   - Inserted User-Course Relationships: {success_count}")
+    print(f"   - Updated Moodle Times: {moodle_success}")
+    print(f"   - Updated Exambase Times: {exambase_success}")
     print(f"\n{'='*80}\n")
 
 
@@ -169,7 +169,7 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(f"\n❌ 测试过程中发生错误: {e}")
+        print(f"\n❌ An error occurred during testing: {e}")
         import traceback
 
         traceback.print_exc()

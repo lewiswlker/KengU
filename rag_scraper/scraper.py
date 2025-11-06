@@ -148,11 +148,26 @@ class RAGScraper:
         Scrape course materials from Moodle
 
         Args:
-            course_filter (list, optional): List of course names to scrape. If None, scrape all courses.
+            course_filter (list, optional): List of course names to scrape.
+                                           If None or empty list, skip Moodle scraping entirely.
 
         Returns:
             dict: Moodle scraping statistics
         """
+        # If course_filter is None or empty list, skip Moodle scraping
+        if course_filter is None or len(course_filter) == 0:
+            self._print("⊘ Skipping Moodle (no courses to update)", force=True)
+            return {
+                "courses": 0,
+                "files_downloaded": 0,
+                "login_time": 0,
+                "extract_time": 0,
+                "download_time": 0,
+                "total_time": 0,
+                "success": True,
+                "skipped": True,
+            }
+
         scraper = None
         try:
             # Check if parallel mode is enabled
@@ -231,11 +246,26 @@ class RAGScraper:
         Scrape course materials from Moodle using parallel workers
 
         Args:
-            course_filter (list, optional): List of course names to scrape. If None, scrape all courses.
+            course_filter (list, optional): List of course names to scrape.
+                                           If None or empty list, skip Moodle scraping entirely.
 
         Returns:
             dict: Moodle scraping statistics
         """
+        # If course_filter is None or empty list, skip Moodle scraping
+        if course_filter is None or len(course_filter) == 0:
+            self._print("⊘ Skipping Moodle (no courses to update)", force=True)
+            return {
+                "courses": 0,
+                "files_downloaded": 0,
+                "login_time": 0,
+                "extract_time": 0,
+                "download_time": 0,
+                "total_time": 0,
+                "success": True,
+                "skipped": True,
+            }
+
         from .parallel import ParallelMoodleDownloader
 
         try:
@@ -333,11 +363,26 @@ class RAGScraper:
         Scrape exam papers from Exambase
 
         Args:
-            course_filter (list, optional): List of full course names to scrape. If None, scrape all courses from knowledge_base.
+            course_filter (list, optional): List of full course names to scrape.
+                                           If None or empty list, skip Exambase scraping entirely.
 
         Returns:
             dict: Exambase scraping statistics
         """
+        # If course_filter is None or empty list, skip Exambase scraping
+        if course_filter is None or len(course_filter) == 0:
+            self._print("⊘ Skipping Exambase (no courses to update)", force=True)
+            return {
+                "courses": 0,
+                "courses_with_exams": 0,
+                "exams_downloaded": 0,
+                "login_time": 0,
+                "download_time": 0,
+                "total_time": 0,
+                "success": True,
+                "skipped": True,
+            }
+
         scraper = None
         try:
             # Check if parallel mode is enabled
@@ -415,11 +460,26 @@ class RAGScraper:
         Scrape exam papers from Exambase using parallel workers
 
         Args:
-            course_filter (list, optional): List of full course names to scrape. If None, scrape all courses from knowledge_base.
+            course_filter (list, optional): List of full course names to scrape.
+                                           If None or empty list, skip Exambase scraping entirely.
 
         Returns:
             dict: Exambase scraping statistics
         """
+        # If course_filter is None or empty list, skip Exambase scraping
+        if course_filter is None or len(course_filter) == 0:
+            self._print("⊘ Skipping Exambase (no courses to update)", force=True)
+            return {
+                "courses": 0,
+                "courses_with_exams": 0,
+                "exams_downloaded": 0,
+                "login_time": 0,
+                "download_time": 0,
+                "total_time": 0,
+                "success": True,
+                "skipped": True,
+            }
+
         from .parallel import ParallelExambaseDownloader
         from collections import defaultdict
         import re

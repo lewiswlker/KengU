@@ -4,7 +4,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 import json
@@ -12,6 +12,7 @@ import time
 import os
 from .logger import get_logger
 
+CONNECT_TIME_OUT = 5  # seconds
 
 class HKUMoodleScraper:
     def __init__(self, headless=True, verbose=False):
@@ -23,12 +24,19 @@ class HKUMoodleScraper:
             verbose (bool): Enable verbose logging
         """
         self.verbose = verbose
+        self.headless = headless
         self.logger = get_logger(log_file="rag_scraper.log", verbose=verbose)
         self.course_urls = {}  # Initialize course URLs dictionary
+        self.courses = []
 
+        # Initialize browser
+        self._initialize_driver()
+
+    def _initialize_driver(self):
+        """Initialize or reinitialize the Chrome WebDriver"""
         # Setup Chrome options
         chrome_options = Options()
-        if headless:
+        if self.headless:
             chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
@@ -43,9 +51,9 @@ class HKUMoodleScraper:
         chrome_options.add_argument("--disable-images")
         chrome_options.add_argument("--blink-settings=imagesEnabled=false")
         chrome_options.add_argument("--disable-css")
-        chrome_options.add_experimental_option("prefs", {
-            "profile.default_content_setting_values.stylesheets": 2
-        })
+        chrome_options.add_experimental_option(
+            "prefs", {"profile.default_content_setting_values.stylesheets": 2}
+        )
         chrome_options.add_argument("--fast")
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-plugins")
@@ -56,7 +64,6 @@ class HKUMoodleScraper:
         chrome_options.add_argument("--disable-javascript")
         chrome_options.add_argument("--disable-dom-distiller")
 
-
         # Initialize WebDriver
         self.driver = webdriver.Chrome(
             service=Service(ChromeDriverManager().install()), options=chrome_options
@@ -64,7 +71,6 @@ class HKUMoodleScraper:
         self.driver.execute_script(
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         )
-        self.courses = []
 
     def _log(self, message):
         """Print message only if verbose mode is enabled"""
@@ -72,161 +78,180 @@ class HKUMoodleScraper:
             self.logger.info(message)
 
     def connect_moodle(self, username, password):
-        """Login to HKU Moodle using Selenium and retrieve courses"""
-        login_start_time = time.time()
+        """Login to HKU Moodle using Selenium and retrieve courses with retry logic"""
         if "@" not in username or "hku" not in username:
             self.logger.error("Error: Please enter a valid HKU email address.")
-            end = time.time()
-            return [], end - login_start_time, 0
-        try:
-            self.logger.info(
-                "Start login! This may take a while depends on your network and hardware, please be patient...",
-                force=True,
-            )
+            return 0
 
-            self._log("Accessing CAS login page directly...")
-            self.driver.get("https://moodle.hku.hk/login/index.php?authCAS=CAS")
-            time.sleep(1)
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            login_start_time = time.time()
 
-            # Step 1: Enter email on HKU Portal login page
-            self._log("Entering email on HKU Portal page...")
             try:
-                # Wait for email input field
-                email_input = WebDriverWait(self.driver, 10).until(
-                    EC.presence_of_element_located((By.ID, "email"))
+                if attempt > 1:
+                    self.logger.warning(
+                        f"🔄 Retry attempt {attempt}/{max_retries} - Restarting browser..."
+                    )
+                    # Close and reinitialize browser
+                    try:
+                        self.driver.quit()
+                    except:
+                        pass
+                    self._initialize_driver()
+                    time.sleep(2)
+
+                self.logger.info(
+                    f"Start login! (Attempt {attempt}/{max_retries}) This may take a while depends on your network and hardware, please be patient...",
+                    force=True,
                 )
-                email_input.clear()
-                email_input.send_keys(username)
-                self._log(f"Entered email: {username}")
-                time.sleep(0.5)
 
-                # Click LOG IN button
-                login_button = WebDriverWait(self.driver, 5).until(
-                    EC.element_to_be_clickable((By.ID, "login_btn"))
-                )
-                login_button.click()
-                self._log("Clicked LOG IN button, waiting for password page...")
-                time.sleep(1)
-            except (TimeoutException, Exception) as e:
-                self._log(f"Failed to enter email: {e}")
-
-            # Step 2: Enter password
-            self._log("Entering password...")
-            try:
-                # Wait for password input field - Microsoft ADFS page
-                password_input = WebDriverWait(self.driver, 10).until(
-                    EC.presence_of_element_located((By.ID, "passwordInput"))
-                )
-                password_input.clear()
-                password_input.send_keys(password)
-                self._log("Password entered")
-                time.sleep(0.5)
-
-                # Click login button - Find submit button
-                submit_button = WebDriverWait(self.driver, 5).until(
-                    EC.element_to_be_clickable((By.ID, "submitButton"))
-                )
-                submit_button.click()
-                self._log("Clicked login button, waiting for login completion...")
-                time.sleep(1)
-            except (TimeoutException, Exception) as e:
-                self._log(f"Failed to enter password: {e}")
-                import traceback
-
-                traceback.print_exc()
-
-            # Step 3: Handle Microsoft "Stay signed in" page
-            self._log("Checking for 'Stay signed in' page...")
-            try:
-                # Wait for "Continue" button to appear
-                continue_button = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.ID, "idSIButton9"))
-                )
-                self._log("Found 'Stay signed in' page, clicking 'Continue' button...")
-                continue_button.click()
-                self._log("Clicked 'Continue' button, waiting for next step...")
-                time.sleep(1)
-            except (TimeoutException, Exception) as e:
-                self._log(f"No 'Stay signed in' page found or click failed: {e}")
-
-            # Step 4: Handle "Stay signed in?" dialog
-            self._log("Checking for 'Stay signed in?' dialog...")
-            try:
-                # Wait for "Yes" button to appear (could be "是" in Chinese or "Yes" in English)
-                yes_button = None
+                # Step 1: Access CAS login page with timeout
+                self._log("Accessing CAS login page directly...")
+                self.driver.set_page_load_timeout(CONNECT_TIME_OUT)
                 try:
-                    # Try to find by ID (usually idSIButton9)
-                    yes_button = WebDriverWait(self.driver, 5).until(
+                    self.driver.get("https://moodle.hku.hk/login/index.php?authCAS=CAS")
+                except TimeoutException:
+                    raise TimeoutException("Page load timeout: CAS login page")
+                time.sleep(1)
+
+                # Step 2: Enter email on HKU Portal login page with timeout
+                self._log("Entering email on HKU Portal page...")
+                try:
+                    email_input = WebDriverWait(self.driver, CONNECT_TIME_OUT).until(
+                        EC.presence_of_element_located((By.ID, "email"))
+                    )
+                    email_input.clear()
+                    email_input.send_keys(username)
+                    self._log(f"Entered email: {username}")
+                    time.sleep(0.5)
+
+                    login_button = WebDriverWait(self.driver, CONNECT_TIME_OUT).until(
+                        EC.element_to_be_clickable((By.ID, "login_btn"))
+                    )
+                    login_button.click()
+                    self._log("Clicked LOG IN button, waiting for password page...")
+                    time.sleep(1)
+                except TimeoutException as e:
+                    raise TimeoutException(f"Timeout during email entry: {e}")
+
+                # Step 3: Enter password with timeout
+                self._log("Entering password...")
+                try:
+                    password_input = WebDriverWait(self.driver, CONNECT_TIME_OUT).until(
+                        EC.presence_of_element_located((By.ID, "passwordInput"))
+                    )
+                    password_input.clear()
+                    password_input.send_keys(password)
+                    self._log("Password entered")
+                    time.sleep(0.5)
+
+                    submit_button = WebDriverWait(self.driver, CONNECT_TIME_OUT).until(
+                        EC.element_to_be_clickable((By.ID, "submitButton"))
+                    )
+                    submit_button.click()
+                    self._log("Clicked login button, waiting for login completion...")
+                    time.sleep(1)
+                except TimeoutException as e:
+                    raise TimeoutException(f"Timeout during password entry: {e}")
+
+                # Step 4: Handle Microsoft "Stay signed in" page with timeout
+                self._log("Checking for 'Stay signed in' page...")
+                try:
+                    continue_button = WebDriverWait(self.driver, CONNECT_TIME_OUT).until(
                         EC.element_to_be_clickable((By.ID, "idSIButton9"))
                     )
+                    self._log(
+                        "Found 'Stay signed in' page, clicking 'Continue' button..."
+                    )
+                    continue_button.click()
+                    self._log("Clicked 'Continue' button, waiting for next step...")
+                    time.sleep(1)
                 except TimeoutException:
-                    # If not found by ID, try to find by text
+                    self._log("No 'Stay signed in' page found or click failed")
+
+                # Step 5: Handle "Stay signed in?" dialog with timeout
+                self._log("Checking for 'Stay signed in?' dialog...")
+                try:
+                    yes_button = None
                     try:
-                        yes_button = WebDriverWait(self.driver, 5).until(
-                            EC.element_to_be_clickable(
-                                (By.XPATH, "//input[@value='是' or @value='Yes']")
-                            )
+                        yes_button = WebDriverWait(self.driver, CONNECT_TIME_OUT).until(
+                            EC.element_to_be_clickable((By.ID, "idSIButton9"))
                         )
                     except TimeoutException:
-                        self._log("'Yes' button not found")
+                        try:
+                            yes_button = WebDriverWait(self.driver, CONNECT_TIME_OUT).until(
+                                EC.element_to_be_clickable(
+                                    (By.XPATH, "//input[@value='是' or @value='Yes']")
+                                )
+                            )
+                        except TimeoutException:
+                            self._log("'Yes' button not found")
 
-                if yes_button:
-                    self._log(
-                        "Found 'Stay signed in?' dialog, clicking 'Yes' button..."
-                    )
-                    yes_button.click()
-                    self._log("Clicked 'Yes' button, waiting for redirect to Moodle...")
+                    if yes_button:
+                        self._log(
+                            "Found 'Stay signed in?' dialog, clicking 'Yes' button..."
+                        )
+                        yes_button.click()
+                        self._log(
+                            "Clicked 'Yes' button, waiting for redirect to Moodle..."
+                        )
+                        time.sleep(1)
+                except Exception as e:
+                    self._log(f"Failed to handle 'Stay signed in?' dialog: {e}")
+
+                # Step 6: Wait and confirm redirect to Moodle with timeout
+                self._log("Waiting for redirect to Moodle...")
+                max_wait = 5
+                wait_count = 0
+                while wait_count < max_wait:
+                    current_url = self.driver.current_url
+                    self._log(f"Current URL ({wait_count}s): {current_url}")
+                    if (
+                        "moodle.hku.hk" in current_url
+                        and "login" not in current_url.lower()
+                    ):
+                        self._log("Successfully logged in to Moodle!")
+                        break
                     time.sleep(1)
-            except (TimeoutException, Exception) as e:
-                self._log(f"Failed to handle 'Stay signed in?' dialog: {e}")
-                import traceback
+                    wait_count += 1
 
-                traceback.print_exc()
+                if wait_count >= max_wait:
+                    raise TimeoutException(
+                        "Timeout: Failed to redirect to Moodle after login"
+                    )
 
-            # Step 5: Wait and confirm redirect to Moodle
-            self._log("Waiting for redirect to Moodle...")
-            # Wait until URL contains moodle.hku.hk and does not contain login
-            max_wait = 7
-            wait_count = 0
-            while wait_count < max_wait:
-                current_url = self.driver.current_url
-                self._log(f"Current URL ({wait_count}s): {current_url}")
-                if (
-                    "moodle.hku.hk" in current_url
-                    and "login" not in current_url.lower()
-                ):
-                    self._log("Successfully logged in to Moodle!")
-                    break
-                time.sleep(1)
-                wait_count += 1
+                # Check if successfully logged in to Moodle
+                if "moodle.hku.hk" in self.driver.current_url:
+                    self._log("Successfully logged in to Moodle")
+                else:
+                    raise Exception(
+                        f"Login verification failed, current URL: {self.driver.current_url}"
+                    )
 
-            if wait_count >= max_wait:
-                end = time.time()
-                self.logger.error(
-                    "Error: You failed to log in! Check your Network, Email or Password."
+                # Calculate and return login time
+                login_end_time = time.time()
+                login_duration = login_end_time - login_start_time
+                self.logger.info(
+                    f"✅ Login successful in {login_duration:.2f}s", force=True
                 )
-                return [], end - login_start_time, 0
+                return login_duration
 
-            # Check if successfully logged in to Moodle
-            if "moodle.hku.hk" in self.driver.current_url:
-                self._log("Successfully logged in to Moodle")
-            else:
-                self._log(
-                    f"May not have logged in successfully, current URL: {self.driver.current_url}"
+            except (TimeoutException, WebDriverException, Exception) as e:
+                error_msg = str(e)
+                self.logger.warning(
+                    f"⚠️ Login attempt {attempt}/{max_retries} failed: {error_msg}"
                 )
 
-            # Calculate and print login time
-            login_end_time = time.time()
-            login_duration = login_end_time - login_start_time
+                if attempt >= max_retries:
+                    self.logger.error(
+                        f"❌ Login failed after {max_retries} attempts. Please check your network, email, or password and try again."
+                    )
+                    return 0
 
-        except (TimeoutException, Exception) as e:
-            self.logger.error(f"Error occurred: {e}")
-            import traceback
+                # Wait before retry
+                time.sleep(2)
 
-            traceback.print_exc()
-            return []
-
-        return login_duration
+        return 0
 
     def get_courses(self):
         # Step 6: Access my courses page
@@ -924,7 +949,7 @@ def main():
         help="HKU email address",
     )
     parser.add_argument(
-        "-p", "--password", type=str, default="Renliubo1891412", help="Password"
+        "-p", "--password", type=str, default="your hku password", help="Password"
     )
     parser.add_argument(
         "--headless",
