@@ -75,13 +75,13 @@ def test_multiple_queries():
     ]
 
     test_cases = [
-        ("What are the main topics in database course?", "Advanced database systems"),
-        ("Tell me about deep learning assignments", "Deep learning"),
+        ("Help me learn B+ tree.", "Advanced database systems"),
+        ("Is the latest assignment about transformer？", "Deep learning"),
         ("How to do data mining projects?", "Data mining"),
-        ("Explain the multimedia concepts", "Multimedia technologies"),
+        ("Explain the sensor concepts", "Multimedia technologies"),
     ]
 
-    for query, expected_keyword in test_cases:
+    for query in test_cases:
         print(f"\nQuery: {query}")
         selected = agent.select_relevant_courses(query, courses_list)
         print(f"Selected: {selected}")
