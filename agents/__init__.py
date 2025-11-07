@@ -2,6 +2,10 @@
 Agents
 """
 
+from __future__ import annotations
+
+from enum import Enum
+
 import dspy
 
 from core.config import settings
@@ -24,7 +28,7 @@ dspy.configure(
 
 
 # Define available agent types
-class AgentType:
+class AgentType(str, Enum):
     """Available agent types in the system"""
 
     PLANNER = "planner"
@@ -76,4 +80,11 @@ class AgentRouter(dspy.Module):
 # Initialize the global router instance
 agent_router = dspy.asyncify(dspy.Predict(AgentRouterSignature))
 
-__all__ = ["dspy", "AgentType", "AgentRouter", "AgentRouterSignature", "agent_router", "update_knowledge_base"]
+__all__ = [
+    "AgentRouter",
+    "AgentRouterSignature",
+    "AgentType",
+    "agent_router",
+    "dspy",
+    "update_knowledge_base",
+]
