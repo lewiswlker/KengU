@@ -65,6 +65,7 @@ def verify_hku_credentials(email, password, headless=True, verbose=False):
         chrome_options.add_argument("--blink-settings=imagesEnabled=false")
         chrome_options.add_argument("--disable-css")
         chrome_options.add_experimental_option("prefs", {
+            "profile.managed_default_content_settings.images": 2,
             "profile.default_content_setting_values.stylesheets": 2
         })
         chrome_options.add_argument("--fast")
@@ -94,7 +95,7 @@ def verify_hku_credentials(email, password, headless=True, verbose=False):
         # Step 1: Enter email
         _log("Entering email...")
         try:
-            email_input = WebDriverWait(driver, 10).until(
+            email_input = WebDriverWait(driver, 5).until(
                 EC.presence_of_element_located((By.ID, "email"))
             )
             email_input.clear()
@@ -125,7 +126,7 @@ def verify_hku_credentials(email, password, headless=True, verbose=False):
         # Step 2: Enter password
         _log("Entering password...")
         try:
-            password_input = WebDriverWait(driver, 10).until(
+            password_input = WebDriverWait(driver, 5).until(
                 EC.presence_of_element_located((By.ID, "passwordInput"))
             )
             password_input.clear()

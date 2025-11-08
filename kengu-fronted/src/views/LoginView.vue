@@ -16,7 +16,7 @@
         <el-form-item prop="email">
           <el-input 
             v-model="loginForm.email" 
-            placeholder="Enter your HKU email (xxx@connect.hku.hk)" 
+            placeholder="Enter your HKU email (xxx@connect.hku.hk or xxx@hku.hk)" 
           >
             <template #prefix>
               <el-icon><User /></el-icon>
@@ -56,7 +56,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { login , verifyHkuAuth } from '../services/api'
+import { verifyHkuAuth, checkAndCreateUser } from '../services/api'
 import { Book, User, Lock } from '@element-plus/icons-vue'
 
 const loginFormRef = ref()
@@ -71,12 +71,12 @@ const loginForm = reactive({
 
 const loginRules = {
   email: [
-    { required: true, message: '请输入HKU邮箱', trigger: 'blur' },
-    { pattern: /@connect\.hku\.hk$/, message: '请输入HKU官方邮箱（xxx@connect.hku.hk）', trigger: 'blur' }
+    { required: true, message: 'Please enter your HKU email', trigger: 'blur' },
+    { pattern: /@(connect\.hku\.hk|hku\.hk)$/, message: 'Please enter your HKU email (xxx@connect.hku.hk or xxx@hku.hk)', trigger: 'blur' }
   ],
   password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 1, message: '密码长度不能为0', trigger: 'blur' }
+    { required: true, message: 'Please enter your HKU Portal password', trigger: 'blur' },
+    { min: 1, message: 'Please enter your HKU Portal password', trigger: 'blur' }
   ]
 }
 
@@ -85,22 +85,26 @@ const handleLogin = async () => {
   
   isLoading.value = true
   try {
-     const authResult = await verifyHkuAuth(loginForm.email, loginForm.password);
+    const authResult = await verifyHkuAuth(loginForm.email, loginForm.password);
     if (!authResult.success) {
-      alert('HKU账号或密码错误，请检查后重试');
+      alert('Please check your email and password');
       return;
     }
-    await login(loginForm.email, loginForm.password)
-    
+
+    const userResult = await checkAndCreateUser(loginForm.email)
+    if (!userResult.success) {
+      alert('System registration failed: ' + (userResult.message || 'Please contact administrator'))
+      return
+    }
+
     userStore.setLogin(loginForm.email)
     await userStore.loadCourses()
     await userStore.loadUserInfo()
     
     router.push('/query')
-    alert('登录成功！')
   } catch (error) {
-    console.error('登录失败', error)
-    alert('登录失败：邮箱或密码错误')
+    console.error('Fail to login', error)
+    alert('Login failed: ' + (error.response?.data?.message || 'Please try again later'))
   } finally {
     isLoading.value = false
   }
@@ -154,6 +158,6 @@ const handleLogin = async () => {
   font-size: 20px;
 }
 .login-btn:hover {
-  background-color: #073416ff; /*  hover时加深颜色 */
+  background-color: #073416ff;
 }
 </style>

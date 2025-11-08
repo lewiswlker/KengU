@@ -28,7 +28,6 @@ const router = createRouter({
   routes
 })
 
-// 路由守卫：未登录跳转登录页
 router.beforeEach((to, from, next) => {
   const isLogin = localStorage.getItem('userEmail')
   if (to.meta.requiresAuth && !isLogin) {

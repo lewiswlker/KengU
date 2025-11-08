@@ -26,13 +26,13 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('userEmail')
       router.push('/')
-      alert('登录已失效，请重新登录')
+      alert('Login Timeout')
     }
     else if (error.response?.status >= 500) {
-      alert('服务器繁忙，请稍后重试')
+      alert('Server is busy, please try again later')
     }
     else if (!error.response) {
-      alert('网络连接失败，请检查后端服务是否启动')
+      alert('Network connection failed. Please check if the backend service is running.')
     }
     return Promise.reject(error)
   }
@@ -42,9 +42,10 @@ export const verifyHkuAuth = (email, password) => {
   return api.post('/hku-auth', { email, password })
 }
 
-export const login = (email, password) => {
-  return api.post('/auth/login', { email, password })
+export const checkAndCreateUser = (email) => {
+  return api.post('/user/check-and-create', { email })
 }
+
 
 export const askQuestion = (question) => {
   return api.post('/rag/query', { question })

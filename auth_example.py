@@ -1,5 +1,6 @@
 import time
 from auth import verify_hku_credentials
+from dao import UserDAO
 
 # Test example
 print("HKU Portal Authentication Test")
