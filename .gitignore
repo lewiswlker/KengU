@@ -3,3 +3,5 @@ __pycache__/
 knowledge_base/
 *.log
 *.md
+vectorbase/
+.DS_Store

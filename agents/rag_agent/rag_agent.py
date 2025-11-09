@@ -17,6 +17,7 @@ sys.path.insert(
 
 from dao import CourseDAO, UserCourseDAO
 from zai import ZhipuAiClient
+from rag.service import RagService
 
 
 @dataclass
@@ -279,16 +280,23 @@ def answer_with_rag(
                 "error": None,
             }
 
-        # Step 3: Call RAG retrieval method (to be implemented by other developer)
-        # Mock implementation for now
-        retrieval_results = _mock_rag_answer(query, selected_courses)
+        # Step 3: Retrieve and generate answer via RAG service
+        rag = RagService()
+        answer, retrieved = rag.retrieve_and_answer(query, selected_courses, top_k=6)
+
+        # Map to RetrievalResult dataclass
+        results: List[RetrievalResult] = []
+        for r in retrieved:
+            results.append(
+                RetrievalResult(
+                    text=r.get("text", ""),
+                    source_url=r.get("source_url", ""),
+                    relevance_score=1.0 / (1.0 + float(r.get("score", 0.0))),
+                )
+            )
 
         # Step 4: Return results
-        return {
-            "answer": retrieval_results.get("answer"),
-            "retrieval_results": retrieval_results.get("retrieval_results", []),
-            "error": None,
-        }
+        return {"answer": answer, "retrieval_results": results, "error": None}
 
     except Exception as e:
         import traceback
