@@ -31,10 +31,11 @@ class Retriever:
             results.append(
                 {
                     "text": chunk["content_with_weight"],
-                    "source_url": chunk.get("url", ""),
+                    "url": chunk.get("hosted_url") or chunk.get("url") or "http://127.0.0.1:8009/mock",
                     "title": chunk.get("title", ""),
                     "course_id": chunk.get("course_id"),
-                    "score": float(dist),
+                    "score": float(dist),              # 距离
+                    "relevance": 1.0 / (1.0 + float(dist)),  # 相关性映射到 (0,1]
                 }
             )
         return results

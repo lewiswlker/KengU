@@ -18,6 +18,8 @@ class Embedder:
         self.api_key = os.getenv("EMBEDDING_API_KEY", "sk-4c8c2ca0523446288547f6bb2c72a9dc")
         self.model = os.getenv("EMBEDDING_MODEL", "text-embedding-v4")
         self.timeout_s = float(os.getenv("EMBEDDING_TIMEOUT_S", "30"))
+        self.batch_size = int(os.getenv("EMBEDDING_BATCH_SIZE", "64"))
+        self.max_chars = int(os.getenv("EMBEDDING_MAX_CHARS", "4000"))
 
     def _headers(self) -> dict:
         headers = {"Content-Type": "application/json"}
@@ -32,21 +34,62 @@ class Embedder:
         if not texts:
             return [], 0
         if self.api_type == "openai":
-            payload = {"model": self.model, "input": texts}
-            resp = requests.post(
-                self.api_url, json=payload, headers=self._headers(), timeout=self.timeout_s
-            )
-            resp.raise_for_status()
-            data = resp.json().get("data", [])
-            embeddings = [item["embedding"] for item in data]
-            return embeddings, 0
+            all_vecs: List[List[float]] = []
+            # DashScope 单次批量上限 10
+            effective_bs = min(self.batch_size, 10)
+            for i in range(0, len(texts), effective_bs):
+                batch = [t[:self.max_chars] for t in texts[i : i + effective_bs]]
+                payload = {"model": self.model, "input": batch}
+                resp = requests.post(
+                    self.api_url, json=payload, headers=self._headers(), timeout=self.timeout_s
+                )
+                if resp.status_code != 200:
+                    from requests import HTTPError
+                    raise HTTPError(f"{resp.status_code} {resp.reason}: {resp.text}")
+                data = resp.json().get("data", [])
+                all_vecs.extend([item["embedding"] for item in data])
+            return all_vecs, 0
         # simple mode: call one by one
         embeddings: List[List[float]] = []
         for t in texts:
-            payload = {"model": self.model, "sentence": t}
+            payload = {"model": self.model, "sentence": t[:self.max_chars]}
             resp = requests.post(
                 self.api_url, json=payload, headers=self._headers(), timeout=self.timeout_s
             )
             resp.raise_for_status()
             embeddings.append(resp.json()["embedding"])
         return embeddings, 0
+
+
+if __name__ == "__main__":
+    import argparse
+    import json
+    import sys
+
+    parser = argparse.ArgumentParser(description="Quick test for Embedder.embed_texts")
+    parser.add_argument(
+        "--texts",
+        type=str,
+        default="这是一段测试文本;Embedding 功能验证",
+        help="Use ';' to separate multiple texts",
+    )
+    args = parser.parse_args()
+
+    texts = [t for t in args.texts.split(";") if t.strip()]
+    if not texts:
+        print("No input texts provided.", file=sys.stderr)
+        sys.exit(2)
+
+    emb = Embedder()
+    print(f"[Embedder] api_type={emb.api_type} api_url={emb.api_url} model={emb.model}")
+    try:
+        vectors, _ = emb.embed_texts(texts)
+        print(f"Embedded {len(vectors)} texts.")
+        if vectors:
+            dim = len(vectors[0])
+            print(f"Vector dim: {dim}")
+            print("First vector (first 8 dims):", json.dumps(vectors[0][:8]))
+    except Exception as e:
+        print(f"Embedding failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
