@@ -404,9 +404,7 @@ class ParallelExambaseDownloader:
                     self._log(f"[Searching] {course_code}", force=True)
 
                     # Use scraper's existing logic to download
-                    downloads = scraper._search_and_download_course(
-                        course_code, course_dirs
-                    )
+                    downloads = scraper._search_and_download_course(course_code, course_dirs)
                     total_downloads += downloads
 
                     task_queue.task_done()

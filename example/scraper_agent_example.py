@@ -6,15 +6,16 @@ import sys
 import os
 
 # Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agents import update_knowledge_base
 
 # Test credentials
 USER_ID = 1
-EMAIL = input("Enter your HKU email: ")
-PASSWORD = input("Enter your HKU password: ")
-
+# EMAIL = input("Enter your HKU email: ")
+EMAIL = "u3665467@connect.hku.hk"
+# PASSWORD = input("Enter your HKU password: ")
+PASSWORD = "Renliubo1891412"
 
 def main():
     # Run the update
