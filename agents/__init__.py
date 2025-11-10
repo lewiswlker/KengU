@@ -49,7 +49,9 @@ class AgentRouterSignature(dspy.Signature):
     """
 
     user_request: str = dspy.InputField(desc="The user's request or query that needs to be processed")
-    agent_type: list[AgentType] = dspy.OutputField(desc="The type of agent best suited to handle this request")
+    agent_type: list[AgentType] = dspy.OutputField(
+        desc="List of agent types best suited to handle this request (can be multiple agents)"
+    )
 
 
 # Define Agent Router Module
