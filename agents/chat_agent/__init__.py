@@ -99,8 +99,7 @@ class ChatAgent:
                 return
 
         # Generate response using LLM with all context
-        if not messages:
-            messages = [{"role": "user", "content": user_request}]
+        messages.append({"role": "user", "content": user_request})
 
         async for chunk in self.llm.static_chat_stream(model_alias=settings.LLM_MODEL_NAME, messages=messages):
             yield chunk
