@@ -322,6 +322,11 @@ class HKUMoodleScraper:
         Args:
             base_dir (str): Base directory to save course materials
             course_filter (list, optional): List of course names to download. If None, download all courses.
+            
+        Returns:
+            tuple: (downloaded_files_count, downloaded_file_paths)
+                - downloaded_files_count: Total number of files downloaded
+                - downloaded_file_paths: List of absolute paths of downloaded files
         """
         from urllib.parse import unquote
 
@@ -335,6 +340,7 @@ class HKUMoodleScraper:
             self._log(f"Created base directory: {base_dir}")
 
         downloaded_files_count = 0
+        downloaded_file_paths = []  # Track all downloaded file paths
 
         # Filter courses if specified
         if course_filter:
@@ -373,8 +379,9 @@ class HKUMoodleScraper:
                     "  → Special NLP course - downloading from external site...",
                     force=True,
                 )
-                nlp_files = self._download_nlp_course(base_dir, course_name)
+                nlp_files, nlp_paths = self._download_nlp_course(base_dir, course_name)
                 downloaded_files_count += nlp_files
+                downloaded_file_paths.extend(nlp_paths)  # Add NLP file paths
                 continue
 
             # Create course directory
@@ -633,6 +640,7 @@ class HKUMoodleScraper:
                         if self._download_file_safe(file_url, file_path):
                             downloaded_in_this_run.add(filename.lower())
                             downloaded_files_count += 1
+                            downloaded_file_paths.append(os.path.abspath(file_path))  # Record absolute path
                             self._log(f"      ✓ Downloaded")
                         else:
                             self._log(f"      ✗ Failed")
@@ -659,7 +667,7 @@ class HKUMoodleScraper:
         self.logger.info(f"Saved to: {os.path.abspath(base_dir)}", force=True)
         self.logger.info(f"{'='*50}\n", force=True)
 
-        return downloaded_files_count
+        return downloaded_files_count, downloaded_file_paths
 
     def _download_file_safe(self, url, filepath):
         """
@@ -708,7 +716,9 @@ class HKUMoodleScraper:
             course_name (str): Course name
 
         Returns:
-            int: Number of files downloaded
+            tuple: (downloaded_count, downloaded_paths)
+                - downloaded_count: Number of files downloaded
+                - downloaded_paths: List of absolute paths of downloaded files
         """
         import requests
 
@@ -724,6 +734,7 @@ class HKUMoodleScraper:
 
         existing_files = set(f.lower() for f in os.listdir(course_dir))
         downloaded_count = 0
+        downloaded_paths = []  # Track downloaded file paths
 
         try:
             # Get page content (no authentication needed)
@@ -770,6 +781,7 @@ class HKUMoodleScraper:
 
                         self._log(f"    ✓ {filename}")
                         downloaded_count += 1
+                        downloaded_paths.append(os.path.abspath(filepath))  # Record absolute path
 
                     except Exception as e:
                         self._log(f"    Failed: {filename} - {e}")
@@ -778,11 +790,11 @@ class HKUMoodleScraper:
             self.logger.info(
                 f"  ✓ NLP course completed: {downloaded_count} files", force=True
             )
-            return downloaded_count
+            return downloaded_count, downloaded_paths
 
         except Exception as e:
             self.logger.error(f"  ✗ Error downloading NLP course: {e}")
-            return 0
+            return 0, []
 
     def _sanitize_filename(self, filename):
         """

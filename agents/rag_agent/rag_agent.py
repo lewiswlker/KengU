@@ -280,9 +280,10 @@ def answer_with_rag(
                 "error": None,
             }
 
+        print(f"Selected courses for query '{query}': {selected_courses}")
         # Step 3: Retrieve and generate answer via RAG service
         rag = RagService()
-        answer, retrieved = rag.retrieve_and_answer(query, selected_courses, top_k=6)
+        retrieved = rag.retrieve(query, selected_courses, top_k=6)
 
         # Map to RetrievalResult dataclass
         results: List[RetrievalResult] = []
@@ -290,13 +291,16 @@ def answer_with_rag(
             results.append(
                 RetrievalResult(
                     text=r.get("text", ""),
-                    source_url=r.get("source_url", ""),
-                    relevance_score=1.0 / (1.0 + float(r.get("score", 0.0))),
+                    source_url=r.get("url", ""),
+                    relevance_score=r.get("relevance", 0.0),
                 )
             )
 
-        # Step 4: Return results
-        return {"answer": answer, "retrieval_results": results, "error": None}
+        # Step 5: Return results with answer
+        return {
+            "retrieval_results": results,
+            "error": None
+        }
 
     except Exception as e:
         import traceback
@@ -304,7 +308,7 @@ def answer_with_rag(
         error_msg = f"Error in answer_with_rag: {str(e)}\n{traceback.format_exc()}"
         print(error_msg)
 
-        return {"answer": None, "retrieval_results": [], "error": error_msg}
+        return {"retrieval_results": [], "error": error_msg}
 
 
 def _mock_rag_answer(query: str, selected_courses: List[str]) -> Dict[str, any]:

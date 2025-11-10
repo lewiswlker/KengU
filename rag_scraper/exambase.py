@@ -413,12 +413,15 @@ class ExambaseScraper:
             exam_links: List of exam paper info dicts
 
         Returns:
-            int: Number of files downloaded
+            tuple: (download_count, downloaded_paths)
+                - download_count: Number of files downloaded
+                - downloaded_paths: List of absolute paths of downloaded files
         """
         if not exam_links:
-            return 0
+            return 0, []
 
         download_count = 0
+        downloaded_paths = []  # Track downloaded file paths
         course_path = os.path.join("knowledge_base", course_folder_name)
 
         # Create course directory if it doesn't exist
@@ -533,6 +536,7 @@ class ExambaseScraper:
                     if file_size > 0:
                         self._log(f"      ✓ Downloaded ({file_size:,} bytes)")
                         download_count += 1
+                        downloaded_paths.append(os.path.abspath(file_path))  # Record absolute path
                     else:
                         self._log("      ✗ Downloaded but file is empty")
                         os.remove(file_path)
@@ -543,7 +547,7 @@ class ExambaseScraper:
                 self._log(f"  [{idx}/{len(exam_links)}] ✗ Error: {str(e)}")
                 continue
 
-        return download_count
+        return download_count, downloaded_paths
 
     def download_all_courses(self, course_filter=None):
         """
@@ -595,6 +599,7 @@ class ExambaseScraper:
             "processed_courses": 0,
             "total_downloads": 0,
             "courses_with_exams": 0,
+            "downloaded_file_paths": [],  # Track all downloaded file paths
         }
 
         # Group courses by course code to search only once per code
@@ -612,10 +617,11 @@ class ExambaseScraper:
                 stats["courses_with_exams"] += 1
                 # Download exam papers to all folders with this course code
                 for folder_name in folder_names:
-                    download_count = self.download_exam_papers(
+                    download_count, downloaded_paths = self.download_exam_papers(
                         course_code, folder_name, exam_links
                     )
                     stats["total_downloads"] += download_count
+                    stats["downloaded_file_paths"].extend(downloaded_paths)  # Add file paths
                     stats["processed_courses"] += 1
             else:
                 # No exams found, just count the processed courses
@@ -636,24 +642,28 @@ class ExambaseScraper:
             course_dirs: List of directory paths for this course
 
         Returns:
-            int: Number of files downloaded
+            tuple: (total_downloads, downloaded_paths)
+                - total_downloads: Number of files downloaded
+                - downloaded_paths: List of absolute paths of downloaded files
         """
         # Search for exam papers
         exam_links = self.search_course_exams(course_code)
 
         if not exam_links:
-            return 0
+            return 0, []
 
         total_downloads = 0
+        all_downloaded_paths = []
         # Download to all matching directories
         for folder_name in course_dirs:
-            download_count = self.download_exam_papers(
+            download_count, downloaded_paths = self.download_exam_papers(
                 course_code, folder_name, exam_links
             )
             total_downloads += download_count
+            all_downloaded_paths.extend(downloaded_paths)
 
         time.sleep(0.5)  # Small delay
-        return total_downloads
+        return total_downloads, all_downloaded_paths
 
     def close(self):
         """Close the browser"""

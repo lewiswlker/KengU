@@ -358,9 +358,57 @@ def update_knowledge_base(
             exambase_courses=exambase_courses if exambase_courses else None,
         )
 
-        # Step 4: Update timestamps in database
+        # Step 4: Generate vector embeddings for newly downloaded files
+        embedding_stats = {}
         if stats.get("success"):
-            logger.info("\n[Step 4/4] Updating timestamps in database...", force=True)
+            # Check if there are any downloaded files
+            moodle_downloads = stats.get("moodle", {}).get("files_downloaded", 0)
+            exambase_downloads = stats.get("exambase", {}).get("exams_downloaded", 0)
+            
+            if moodle_downloads > 0 or exambase_downloads > 0:
+                logger.info("\n[Step 4/5] Generating vector embeddings for downloaded files...", force=True)
+                logger.info(
+                    f"  Files to process: Moodle={moodle_downloads}, Exambase={exambase_downloads}",
+                    force=True
+                )
+                
+                try:
+                    from .embeddings_generator import generate_embeddings_from_download_stats
+                    
+                    # Generate embeddings using download statistics
+                    embedding_stats = generate_embeddings_from_download_stats(
+                        download_stats=stats,
+                        base_url=os.getenv("KNOWLEDGE_BASE_URL", "http://127.0.0.1:8009/knowledge_base/")
+                    )
+                    
+                    if embedding_stats.get("success"):
+                        logger.info(
+                            f"✅ Generated {embedding_stats['total_vectors']} vectors from "
+                            f"{embedding_stats['total_files']} files across "
+                            f"{embedding_stats['courses_processed']} courses",
+                            force=True
+                        )
+                    else:
+                        logger.warning("⚠️  Some files failed to generate embeddings")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Failed to generate embeddings: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    embedding_stats = {"success": False, "error": str(e)}
+            else:
+                logger.info("\n[Step 4/5] No new files downloaded, skipping embeddings generation", force=True)
+                embedding_stats = {
+                    "success": True,
+                    "total_files": 0,
+                    "total_vectors": 0,
+                    "courses_processed": 0,
+                    "message": "No new files to process"
+                }
+        
+        # Step 5: Update timestamps in database
+        if stats.get("success"):
+            logger.info("\n[Step 5/5] Updating timestamps in database...", force=True)
             updater._update_timestamps(courses, moodle_courses, exambase_courses)
             logger.info("✅ Timestamps updated", force=True)
         else:
@@ -386,6 +434,7 @@ def update_knowledge_base(
         logger.info("=" * 80, force=True)
         end = time.time()
         stats["total_time"] = end - start
+        stats["embeddings"] = embedding_stats
         return stats
 
     except Exception as e:
