@@ -6,7 +6,7 @@ import sys
 import os
 
 # Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agents import update_knowledge_base
 
@@ -14,7 +14,6 @@ from agents import update_knowledge_base
 USER_ID = 1
 EMAIL = input("Enter your HKU email: ")
 PASSWORD = input("Enter your HKU password: ")
-
 
 def main():
     # Run the update

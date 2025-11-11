@@ -9,9 +9,9 @@ import sys
 import os
 
 # Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agents.rag_agent import answer_with_rag, RetrievalResult
+from agents.rag_agent import answer_with_rag
 from agents.rag_agent.rag_agent import RAGAgent
 
 
@@ -94,7 +94,7 @@ def test_answer_with_rag():
 
     # Test with a user_id (you need to use a valid user_id from your database)
     user_id = 1  # Replace with actual user_id
-    query = "What are the recent topics covered in NLP course?"
+    query = "Describe transformer model to me."
 
     print(f"\nUser ID: {user_id}")
     print(f"Query: {query}")
@@ -109,73 +109,32 @@ def test_answer_with_rag():
     if result["error"]:
         print(f"\n❌ Error: {result['error']}")
     else:
-        print(f"\n✅ Answer:")
-        print(result["answer"])
-
         print(f"\n📚 Retrieval Results: {len(result['retrieval_results'])}")
         for i, res in enumerate(result["retrieval_results"], 1):
             print(f"\n  Result {i}:")
-            print(f"    Text: {res.text[:100]}...")
+            print(f"    Title: {res.title}")
+            print(f"    Text: {res.text}...")
             print(f"    Source: {res.source_url}")
             print(f"    Score: {res.relevance_score}")
-
-
-def test_mock_answer():
-    """Test with mock courses (no database required)"""
-    print("\n\n" + "=" * 80)
-    print("Test 4: Mock Answer (No Database)")
-    print("=" * 80)
-
-    agent = RAGAgent()
-
-    query = "Explain transformer architecture in NLP"
-    courses = ["COMP7607 Natural language processing [Section 1B, 2025]"]
-
-    print(f"\nQuery: {query}")
-    print(f"Courses: {courses}")
-
-    # Directly call the mock answer function
-    from agents.rag_agent.rag_agent import _mock_rag_answer
-
-    result = _mock_rag_answer(query, courses)
-
-    print(f"\n✅ Mock Answer:")
-    print(result["answer"])
-
-    print(f"\n📚 Mock Retrieval Results: {len(result['retrieval_results'])}")
-    for i, res in enumerate(result["retrieval_results"], 1):
-        print(f"\n  Result {i}:")
-        print(f"    Text: {res.text}")
-        print(f"    Source: {res.source_url}")
-        print(f"    Score: {res.relevance_score}")
-
 
 if __name__ == "__main__":
     print("\n🚀 RAG Agent Test Suite\n")
 
-    # Run tests
-    try:
-        # Test 1: Course selection (requires API key)
-        print("Note: Test 1 requires valid ZhipuAI API key")
-        print("If you see import errors, run: pip install zai-sdk\n")
+    # # Run tests
+    # try:
+    #     # Test 1: Course selection (requires API key)
+    #     print("Note: Test 1 requires valid ZhipuAI API key")
+    #     print("If you see import errors, run: pip install zai-sdk\n")
 
-        test_course_selection()
-        test_multiple_queries()
+    #     test_course_selection()
+    #     test_multiple_queries()
 
-    except Exception as e:
-        print(f"\n⚠️  Course selection tests skipped due to: {e}")
-        print("Make sure to install: pip install zai-sdk")
+    # except Exception as e:
+    #     print(f"\n⚠️  Course selection tests skipped due to: {e}")
+    #     print("Make sure to install: pip install zai-sdk")
 
     # Test 3: Full pipeline (requires database)
     try:
         test_answer_with_rag()
     except Exception as e:
         print(f"\n⚠️  Full pipeline test skipped due to: {e}")
-        print("This test requires a valid user_id in the database")
-
-    # Test 4: Mock answer (always works)
-    test_mock_answer()
-
-    print("\n\n" + "=" * 80)
-    print("✅ Test Suite Completed")
-    print("=" * 80)
