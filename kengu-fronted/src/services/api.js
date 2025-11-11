@@ -46,13 +46,12 @@ export const checkAndCreateUser = (email) => {
   return api.post('/user/check-and-create', { email })
 }
 
+export const getUserCourses = (email) => {
+  return api.post('/user/courses', { email})
+}
 
 export const askQuestion = (question) => {
   return api.post('/rag/query', { question })
-}
-
-export const getUserCourses = () => {
-  return api.get('/user/courses')
 }
 
 export const getUserInfo = () => {

@@ -99,7 +99,6 @@ const handleLogin = async () => {
 
     userStore.setLogin(loginForm.email)
     await userStore.loadCourses()
-    await userStore.loadUserInfo()
     
     router.push('/query')
   } catch (error) {

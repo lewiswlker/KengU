@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { getUserCourses, getUserInfo } from '../services/api'
+import { getUserCourses } from '../services/api'
 
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -20,18 +20,10 @@ export const useUserStore = defineStore('user', {
     },
     async loadCourses() {
       try {
-        const res = await getUserCourses()
+        const res = await getUserCourses(this.email)
         this.courses = res.data
       } catch (error) {
         console.error('获取课程失败', error)
-      }
-    },
-    async loadUserInfo() {
-      try {
-        const res = await getUserInfo()
-        this.info = res.data
-      } catch (error) {
-        console.error('获取用户信息失败', error)
       }
     }
   }
