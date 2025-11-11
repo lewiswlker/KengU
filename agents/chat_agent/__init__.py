@@ -1,8 +1,9 @@
 import asyncio
 from collections.abc import AsyncGenerator
 
-from agents import AgentType, update_knowledge_base
+from agents import AgentType, settings, update_knowledge_base
 from agents.llm import LLM
+from agents.rag_agent import answer_with_rag
 from dao.user import UserDAO
 from rag_scraper.scraper import RAGScraper
 
@@ -24,7 +25,11 @@ class ChatAgent:
         )
 
     async def chat(
-        self, user_request: str, user_id: int | None = None, user_email: str | None = None, messages: list | None = None
+        self,
+        user_request: str,
+        user_id: int | None = None,
+        user_email: str | None = None,
+        messages: list | None = None,
     ) -> AsyncGenerator[str]:
         """
         Route request to appropriate agent and generate response
@@ -51,11 +56,13 @@ class ChatAgent:
         agent_tasks = []
         for agent_type in agent_types:
             if agent_type == AgentType.SCRAPER:
-                agent_tasks.append(self._handle_scraper_agent(user_id=user_id, user_email=user_email))
+                agent_tasks.append(
+                    asyncio.create_task(self._handle_scraper_agent(user_id=user_id, user_email=user_email))
+                )
             elif agent_type == AgentType.PLANNER:
-                agent_tasks.append(self._handle_planner_agent(user_request))
+                agent_tasks.append(asyncio.create_task(self._handle_planner_agent(user_request)))
             elif agent_type == AgentType.RAG:
-                agent_tasks.append(self._handle_rag_agent(user_request))
+                agent_tasks.append(asyncio.create_task(self._handle_rag_agent(user_request, user_id=user_id)))
             # AgentType.GENERAL doesn't need a specific handler
 
         # Execute all agent tasks concurrently
@@ -82,17 +89,19 @@ class ChatAgent:
                         else:
                             # Plain text result
                             messages.append(
-                                {"role": "system", "content": f"Agent {agent_types[i]} 结果: {str(result)}"}
+                                {
+                                    "role": "system",
+                                    "content": f"Agent {agent_types[i]} 结果: {str(result)}",
+                                }
                             )
             except Exception as e:
                 yield f"执行代理任务时出错: {str(e)}"
                 return
 
         # Generate response using LLM with all context
-        if not messages:
-            messages = [{"role": "user", "content": user_request}]
+        messages.append({"role": "user", "content": user_request})
 
-        async for chunk in self.llm.static_chat_stream(model_alias="default", messages=messages):
+        async for chunk in self.llm.static_chat_stream(model_alias=settings.LLM_MODEL_NAME, messages=messages):
             yield chunk
 
     async def _handle_scraper_agent(self, user_id: int | None = None, user_email: str | None = None) -> dict | None:
@@ -110,7 +119,10 @@ class ChatAgent:
             user_info = self.user_dao.find_by_email(user_email)
 
         if user_info is None:
-            return {"success": False, "error": "无法获取用户信息，请提供有效的 user_id 或 user_email 参数。"}
+            return {
+                "success": False,
+                "error": "无法获取用户信息，请提供有效的 user_id 或 user_email 参数。",
+            }
 
         try:
             # Run synchronous update_knowledge_base in thread pool to avoid blocking
@@ -123,7 +135,11 @@ class ChatAgent:
                 verbose=False,
             )
 
-            return {"success": True, "data": scrape_result, "summary": f"成功更新知识库: {scrape_result}"}
+            return {
+                "success": True,
+                "data": scrape_result,
+                "summary": f"成功更新知识库: {scrape_result}",
+            }
         except Exception as e:
             return {"success": False, "error": f"更新知识库时出错: {str(e)}"}
 
@@ -135,14 +151,45 @@ class ChatAgent:
             dict: Result with 'success', 'data', and optional 'error' keys
         """
         # TODO: Implement planner agent logic
-        return {"success": True, "data": "Planner agent not yet implemented", "summary": "规划代理尚未实现"}
+        return {
+            "success": True,
+            "data": "Planner agent not yet implemented",
+            "summary": "规划代理尚未实现",
+        }
 
-    async def _handle_rag_agent(self, user_request: str) -> dict | None:
+    async def _handle_rag_agent(self, user_request: str, user_id: int | None = None) -> dict | None:
         """
         Handle requests routed to the RAG agent
 
         Returns:
             dict: Result with 'success', 'data', and optional 'error' keys
         """
-        # TODO: Implement RAG agent logic
-        return {"success": True, "data": "RAG agent not yet implemented", "summary": "RAG代理尚未实现"}
+        if user_id is None:
+            return {
+                "success": False,
+                "error": "RAG代理需要有效的 user_id 参数。",
+            }
+
+        try:
+            rag_result = await asyncio.to_thread(
+                answer_with_rag,
+                query=user_request,
+                user_id=user_id,
+            )
+
+            # Structure retrieval results for context
+            retrieval_summary = ""
+            if rag_result.get("retrieval_results"):
+                retrieval_summary = "检索到的相关内容:\n"
+                for i, result in enumerate(rag_result["retrieval_results"], 1):
+                    retrieval_summary += f"{i}. 相关度: {result.relevance_score:.2f}\n"
+                    retrieval_summary += f"   来源: {result.source_url}\n"
+                    retrieval_summary += f"   内容: {result.text}\n\n"
+
+            return {
+                "success": True,
+                "data": rag_result,
+                "summary": retrieval_summary.strip(),
+            }
+        except Exception as e:
+            return {"success": False, "error": f"RAG检索时出错: {str(e)}"}
