@@ -27,6 +27,7 @@ class RetrievalResult:
     text: str
     source_url: str
     relevance_score: float
+    title: str
 
 
 class RAGAgent:
@@ -265,7 +266,6 @@ def answer_with_rag(
 
         if not user_courses:
             return {
-                "answer": None,
                 "retrieval_results": [],
                 "error": f"No courses found for user_id {user_id}",
             }
@@ -275,7 +275,6 @@ def answer_with_rag(
 
         if not selected_courses:
             return {
-                "answer": "I couldn't identify which course your question is related to. Could you please specify the course name?",
                 "retrieval_results": [],
                 "error": None,
             }
@@ -293,6 +292,7 @@ def answer_with_rag(
                     text=r.get("text", ""),
                     source_url=r.get("url", ""),
                     relevance_score=r.get("relevance", 0.0),
+                    title=r.get("title", "")
                 )
             )
 
@@ -332,12 +332,14 @@ def _mock_rag_answer(query: str, selected_courses: List[str]) -> Dict[str, any]:
             f"The actual RAG system will retrieve relevant course materials here.",
             source_url=f"https://moodle.hku.hk/course/view.php?id=12345",
             relevance_score=0.95,
+            title="Mock Course Material Title",
         ),
         RetrievalResult(
             text=f"Another mock result showing related content from {selected_courses[0]}. "
             f"This will be replaced with real course material snippets.",
             source_url=f"https://moodle.hku.hk/mod/resource/view.php?id=67890",
             relevance_score=0.87,
+            title="Another Mock Material Title"
         ),
     ]
 

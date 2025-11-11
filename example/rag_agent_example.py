@@ -11,7 +11,7 @@ import os
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agents.rag_agent import answer_with_rag, RetrievalResult
+from agents.rag_agent import answer_with_rag
 from agents.rag_agent.rag_agent import RAGAgent
 
 
@@ -94,7 +94,7 @@ def test_answer_with_rag():
 
     # Test with a user_id (you need to use a valid user_id from your database)
     user_id = 1  # Replace with actual user_id
-    query = "Talk about the 2-gram discussed in NLP class."
+    query = "Describe transformer model to me."
 
     print(f"\nUser ID: {user_id}")
     print(f"Query: {query}")
@@ -112,6 +112,7 @@ def test_answer_with_rag():
         print(f"\n📚 Retrieval Results: {len(result['retrieval_results'])}")
         for i, res in enumerate(result["retrieval_results"], 1):
             print(f"\n  Result {i}:")
+            print(f"    Title: {res.title}")
             print(f"    Text: {res.text}...")
             print(f"    Source: {res.source_url}")
             print(f"    Score: {res.relevance_score}")

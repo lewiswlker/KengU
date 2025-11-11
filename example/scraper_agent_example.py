@@ -12,10 +12,8 @@ from agents import update_knowledge_base
 
 # Test credentials
 USER_ID = 1
-# EMAIL = input("Enter your HKU email: ")
-EMAIL = "u3665467@connect.hku.hk"
-# PASSWORD = input("Enter your HKU password: ")
-PASSWORD = "Renliubo1891412"
+EMAIL = input("Enter your HKU email: ")
+PASSWORD = input("Enter your HKU password: ")
 
 def main():
     # Run the update
