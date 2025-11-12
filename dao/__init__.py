@@ -13,5 +13,5 @@ __all__ = [
     "DBConnector",
     "CourseDAO",
     "UserCourseDAO",
-    "UserDAO"
+    "UserDAO",
 ]

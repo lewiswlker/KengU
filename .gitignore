@@ -1,6 +1,12 @@
 .idea/
 __pycache__/
-*.pyc
+*/__pycache__/
+knowledge_base/
+*.log
+*.md
+vectorbase/
+*/.DS_Store
+.DS_Store
 .env
 /venv
 /dao/initialize_database.py

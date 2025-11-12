@@ -82,41 +82,22 @@ class RAGScraper:
         self._print("-" * 60, force=True)
 
         try:
-            # Run Moodle and Exambase in parallel using threading
+            # Run Moodle and Exambase sequentially (Moodle first, then Exambase)
             self._print(
-                "\n🚀 Starting parallel scraping (Moodle + Exambase simultaneously)...",
+                "\n🚀 Starting sequential scraping (Moodle → Exambase)...",
                 force=True,
             )
             self._print("-" * 60, force=True)
 
-            moodle_stats = {}
-            exambase_stats = {}
+            # Step 1: Scrape Moodle
+            self._print("\n[MOODLE] Starting...", force=True)
+            moodle_stats = self._scrape_moodle(moodle_courses)
+            self._print("[MOODLE] Completed!", force=True)
 
-            def moodle_worker():
-                nonlocal moodle_stats
-                self._print("\n[MOODLE] Starting...", force=True)
-                moodle_stats = self._scrape_moodle(moodle_courses)
-                self._print("[MOODLE] Completed!", force=True)
-
-            def exambase_worker():
-                nonlocal exambase_stats
-                self._print("\n[EXAMBASE] Starting...", force=True)
-                exambase_stats = self._scrape_exambase(exambase_courses)
-                self._print("[EXAMBASE] Completed!", force=True)
-
-            # Create threads
-            moodle_thread = threading.Thread(target=moodle_worker, name="MoodleThread")
-            exambase_thread = threading.Thread(
-                target=exambase_worker, name="ExambaseThread"
-            )
-
-            # Start both threads
-            moodle_thread.start()
-            exambase_thread.start()
-
-            # Wait for both to complete
-            moodle_thread.join()
-            exambase_thread.join()
+            # Step 2: Scrape Exambase (after Moodle completes)
+            self._print("\n[EXAMBASE] Starting...", force=True)
+            exambase_stats = self._scrape_exambase(exambase_courses)
+            self._print("[EXAMBASE] Completed!", force=True)
 
             self.stats["moodle"] = moodle_stats
             self.stats["exambase"] = exambase_stats
@@ -148,11 +129,26 @@ class RAGScraper:
         Scrape course materials from Moodle
 
         Args:
-            course_filter (list, optional): List of course names to scrape. If None, scrape all courses.
+            course_filter (list, optional): List of course names to scrape.
+                                           If None or empty list, skip Moodle scraping entirely.
 
         Returns:
             dict: Moodle scraping statistics
         """
+        # If course_filter is None or empty list, skip Moodle scraping
+        if course_filter is None or len(course_filter) == 0:
+            self._print("⊘ Skipping Moodle (no courses to update)", force=True)
+            return {
+                "courses": 0,
+                "files_downloaded": 0,
+                "login_time": 0,
+                "extract_time": 0,
+                "download_time": 0,
+                "total_time": 0,
+                "success": True,
+                "skipped": True,
+            }
+
         scraper = None
         try:
             # Check if parallel mode is enabled
@@ -184,7 +180,7 @@ class RAGScraper:
 
             # Download all course materials
             download_start = time.time()
-            downloaded_files = scraper.download_all_courses(
+            downloaded_files, downloaded_paths = scraper.download_all_courses(
                 base_dir="knowledge_base", course_filter=course_filter
             )
             download_time = time.time() - download_start
@@ -192,6 +188,7 @@ class RAGScraper:
             stats = {
                 "courses": len(courses),
                 "files_downloaded": downloaded_files,
+                "downloaded_file_paths": downloaded_paths,  # Add file paths list
                 "login_time": login_time,
                 "extract_time": extract_time,
                 "download_time": download_time,
@@ -231,11 +228,26 @@ class RAGScraper:
         Scrape course materials from Moodle using parallel workers
 
         Args:
-            course_filter (list, optional): List of course names to scrape. If None, scrape all courses.
+            course_filter (list, optional): List of course names to scrape.
+                                           If None or empty list, skip Moodle scraping entirely.
 
         Returns:
             dict: Moodle scraping statistics
         """
+        # If course_filter is None or empty list, skip Moodle scraping
+        if course_filter is None or len(course_filter) == 0:
+            self._print("⊘ Skipping Moodle (no courses to update)", force=True)
+            return {
+                "courses": 0,
+                "files_downloaded": 0,
+                "login_time": 0,
+                "extract_time": 0,
+                "download_time": 0,
+                "total_time": 0,
+                "success": True,
+                "skipped": True,
+            }
+
         from .parallel import ParallelMoodleDownloader
 
         try:
@@ -333,11 +345,26 @@ class RAGScraper:
         Scrape exam papers from Exambase
 
         Args:
-            course_filter (list, optional): List of full course names to scrape. If None, scrape all courses from knowledge_base.
+            course_filter (list, optional): List of full course names to scrape.
+                                           If None or empty list, skip Exambase scraping entirely.
 
         Returns:
             dict: Exambase scraping statistics
         """
+        # If course_filter is None or empty list, skip Exambase scraping
+        if course_filter is None or len(course_filter) == 0:
+            self._print("⊘ Skipping Exambase (no courses to update)", force=True)
+            return {
+                "courses": 0,
+                "courses_with_exams": 0,
+                "exams_downloaded": 0,
+                "login_time": 0,
+                "download_time": 0,
+                "total_time": 0,
+                "success": True,
+                "skipped": True,
+            }
+
         scraper = None
         try:
             # Check if parallel mode is enabled
@@ -377,6 +404,7 @@ class RAGScraper:
                 "courses": stats.get("total_courses", 0),
                 "courses_with_exams": stats.get("courses_with_exams", 0),
                 "exams_downloaded": stats.get("total_downloads", 0),
+                "downloaded_file_paths": stats.get("downloaded_file_paths", []),  # Add file paths list
                 "login_time": login_time,
                 "download_time": download_time,
                 "total_time": login_time + download_time,
@@ -415,11 +443,26 @@ class RAGScraper:
         Scrape exam papers from Exambase using parallel workers
 
         Args:
-            course_filter (list, optional): List of full course names to scrape. If None, scrape all courses from knowledge_base.
+            course_filter (list, optional): List of full course names to scrape.
+                                           If None or empty list, skip Exambase scraping entirely.
 
         Returns:
             dict: Exambase scraping statistics
         """
+        # If course_filter is None or empty list, skip Exambase scraping
+        if course_filter is None or len(course_filter) == 0:
+            self._print("⊘ Skipping Exambase (no courses to update)", force=True)
+            return {
+                "courses": 0,
+                "courses_with_exams": 0,
+                "exams_downloaded": 0,
+                "login_time": 0,
+                "download_time": 0,
+                "total_time": 0,
+                "success": True,
+                "skipped": True,
+            }
+
         from .parallel import ParallelExambaseDownloader
         from collections import defaultdict
         import re
