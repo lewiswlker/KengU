@@ -190,3 +190,41 @@ class CourseDAO:
                     return affected_rows > 0
         except ProgrammingError as e:
             raise RuntimeError(f"SQL execution error: {str(e)}") from e
+    # python
+    def find_all(self) -> List[dict]:
+        """
+        Find all courses
+        :return: List of all courses
+        """
+        sql = """
+            SELECT id, course_name, update_time_moodle, update_time_exambase
+            FROM courses
+            ORDER BY id ASC
+        """
+        try:
+            with self.db_connector.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql)
+                    return cursor.fetchall()
+        except ProgrammingError as e:
+            raise RuntimeError(f"SQL execution error: {str(e)}") from e
+
+    def find_by_id(self, course_id: int) -> Optional[dict]:
+        """
+        Find course by ID
+        :param course_id: Target course ID
+        :return: Course dict if exists, None otherwise
+        """
+        sql = """
+            SELECT id, course_name, update_time_moodle, update_time_exambase
+            FROM courses
+            WHERE id = %s
+            LIMIT 1
+        """
+        try:
+            with self.db_connector.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql, (course_id,))
+                    return cursor.fetchone()
+        except ProgrammingError as e:
+            raise RuntimeError(f"SQL execution error: {str(e)}") from e

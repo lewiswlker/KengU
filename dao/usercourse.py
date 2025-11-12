@@ -48,3 +48,63 @@ class UserCourseDAO:
             ) from e
         except ProgrammingError as e:
             raise RuntimeError(f"SQL execution error: {str(e)}") from e
+
+    # 在 UserCourseDAO 类中添加以下方法
+
+    def get_course_progress(self, user_id: int) -> List[Dict]:
+        """获取用户各课程进度"""
+        sql = """
+              SELECT c.course_id, \
+                     c.course_name, \
+                     COUNT(a.id)                                             as total_assignments, \
+                     SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed_assignments
+              FROM user_courses uc
+                       JOIN courses c ON uc.course_id = c.course_id
+                       LEFT JOIN assignment a ON c.course_id = a.course_id
+              WHERE uc.user_id = %s
+              GROUP BY c.course_id, c.course_name \
+              """
+        try:
+            with self.db_connector.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql, (user_id,))
+                    results = cursor.fetchall()
+
+                    courses = []
+                    for row in results:
+                        total = row.get('total_assignments', 0) or 0
+                        completed = row.get('completed_assignments', 0) or 0
+                        progress = round((completed / total * 100), 1) if total > 0 else 0
+
+                        courses.append({
+                            'course_id': row.get('course_id'),
+                            'course_name': row.get('course_name'),
+                            'total_assignments': total,
+                            'completed_assignments': completed,
+                            'progress_percentage': progress
+                        })
+                    return courses
+        except Exception as e:
+            print(f"获取课程进度错误: {e}")
+            return []
+
+    def get_user_active_courses(self, user_id: int) -> List[Dict]:
+        """获取用户当前活跃的课程"""
+        sql = """
+              SELECT c.course_id, \
+                     c.course_name, \
+                     c.update_time_moodle, \
+                     c.update_time_exambase
+              FROM user_courses uc
+                       JOIN courses c ON uc.course_id = c.course_id
+              WHERE uc.user_id = %s
+              ORDER BY c.course_name \
+              """
+        try:
+            with self.db_connector.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql, (user_id,))
+                    return cursor.fetchall()
+        except Exception as e:
+            print(f"获取用户课程错误: {e}")
+            return []
