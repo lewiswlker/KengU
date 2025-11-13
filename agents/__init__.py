@@ -10,8 +10,8 @@ import dspy
 
 from core.config import settings
 
-from .scraper_agent import update_knowledge_base
 from .planner_agent import PlannerAgent
+from .scraper_agent import update_knowledge_base
 
 # Configure DSPy with LLM settings
 dspy.configure(
@@ -90,5 +90,5 @@ __all__ = [
     "agent_router",
     "dspy",
     "update_knowledge_base",
-    'PlannerAgent'
+    "PlannerAgent",
 ]
