@@ -1,18 +1,39 @@
 <template>
   <div class="profile-page">
-    <el-header class="page-header">
+    <!-- 与QueryView一致的页面头 -->
+    <el-header class="hku-header">
       <div class="header-left">
-        <el-icon><Book /></el-icon>
-        <span class="app-name">KengU 学术助手</span>
-      </div>
-      <div class="header-right">
         <el-button 
           type="text" 
           @click="goToQuery"
+          class="kengu-btn"
         >
-          <el-icon><Message /></el-icon>
-          问答主页
+          KengU
         </el-button>
+      </div>
+      <div class="header-nav">
+        <el-button 
+          type="text" 
+          @click="goToDashboard"
+          class="dashboard-btn"
+        >
+          Dashboard
+        </el-button>
+      </div>
+      <div class="header-right">
+        <el-dropdown trigger="click">
+          <div class="user-info">
+            <el-icon class="user-icon"><User /></el-icon>
+            <span class="user-name">{{ userStore.info?.name || userStore.email }}</span>
+            <el-icon class="dropdown-icon"><ArrowDown /></el-icon>
+          </div>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item @click="goToProfile">Profile</el-dropdown-item>
+              <el-dropdown-item divided @click="handleLogout">Logout</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </el-header>
 
@@ -22,14 +43,12 @@
           <User />
         </el-avatar>
         <div class="user-info">
-          <h2>{{ userStore.info?.name || '未获取姓名' }}</h2>
           <p>{{ userStore.email }}</p>
-          <p>学号：{{ userStore.info?.studentId || '未获取学号' }}</p>
         </div>
       </div>
 
       <div class="courses-section">
-        <h3>已选课程（{{ userStore.courses.length }}门）</h3>
+        <h3>Courses({{ userStore.courses.length }})</h3>
         <el-divider />
         <div class="courses-grid">
           <el-card 
@@ -42,16 +61,6 @@
           </el-card>
         </div>
       </div>
-
-      <div class="logout-section">
-        <el-button 
-          type="danger" 
-          @click="handleLogout"
-        >
-          <el-icon><Logout /></el-icon>
-          退出登录
-        </el-button>
-      </div>
     </el-card>
   </div>
 </template>
@@ -60,7 +69,7 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { Book, User, Message, Logout } from '@element-plus/icons-vue'
+import { User, ArrowDown} from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -70,13 +79,13 @@ onMounted(() => {
     router.push('/')
     return
   }
-  userStore.loadUserInfo()
   userStore.loadCourses()
 })
 
-const goToQuery = () => {
-  router.push('/query')
-}
+// 导航方法（与QueryView保持一致）
+const goToQuery = () => router.push('/query')
+const goToDashboard = () => router.push('/dashboard')
+const goToProfile = () => router.push('/profile')
 
 const handleLogout = () => {
   if (confirm('确定要退出登录吗？')) {
@@ -87,5 +96,129 @@ const handleLogout = () => {
 </script>
 
 <style scoped>
-/* 样式参考TS版本，略 */
+/* 引入与QueryView一致的头部样式 */
+.hku-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background-color: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  height: 60px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+}
+
+.el-button.kengu-btn {
+  font-size: 20px;
+  font-weight: bold;
+  color: #0a4a1f;
+  padding: 0;
+  margin: 0;
+}
+.el-button.kengu-btn:hover {
+  color: #00300f;
+  background-color: transparent;
+}
+
+.header-nav {
+  flex: 1;
+  display: flex;
+  justify-content: flex-start;
+  margin-left: 40px;
+}
+
+.el-button.dashboard-btn {
+  font-size: 17px;
+  color: #333;
+}
+.el-button.dashboard-btn:hover {
+  color: #1f6937;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.user-icon {
+  margin-right: 8px;
+  font-size: 18px;
+}
+
+.user-name {
+  font-size: 14px;
+  margin-right: 5px;
+}
+
+.dropdown-icon {
+  font-size: 16px;
+}
+
+/* Profile页面特有样式 */
+.profile-card {
+  max-width: 800px;
+  margin: 30px auto;
+  padding: 20px;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 30px;
+  gap: 20px;
+}
+
+.avatar {
+  background-color: #0a4a1f;
+}
+
+.user-info p {
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0;
+}
+
+.courses-section {
+  margin: 30px 0;
+}
+
+.courses-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.course-card {
+  cursor: pointer;
+  transition: all 0.3s;
+}
+.course-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.course-name {
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.course-fullname {
+  font-size: 13px;
+  color: #666;
+  word-break: break-all;
+}
 </style>

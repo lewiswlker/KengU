@@ -85,16 +85,19 @@ class KnowledgeBaseUpdater:
 
             # Step 3: Insert courses into database and create user-course mappings
             courses = []
-            for course_name in course_list:
+            for course in course_list:
+                course_name = course["course_name"]
+                moodle_course_id = course["course_id"]  # Moodle's course ID (e.g., 135042)
+                
                 # Check if course exists in database
-                course_id = self.course_dao.find_id_by_name(course_name)
+                db_course_id = self.course_dao.find_id_by_name(course_name)
 
-                if course_id is None:
+                if db_course_id is None:
                     # Course doesn't exist, insert it
                     try:
-                        course_id = self.course_dao.insert_name(course_name)
+                        db_course_id = self.course_dao.insert_name(course_name, moodle_course_id)
                         self.logger.info(
-                            f"  ➕ Inserted new course: {course_name[:60]}... (ID: {course_id})",
+                            f"  ➕ Inserted new course: {course_name[:60]}... (DB ID: {db_course_id}, Moodle ID: {moodle_course_id})",
                             force=True,
                         )
                     except RuntimeError as e:
@@ -103,14 +106,14 @@ class KnowledgeBaseUpdater:
 
                 # Insert user-course mapping
                 try:
-                    self.user_course_dao.insert_user_courses(user_id, course_id)
-                    courses.append({"id": course_id, "name": course_name})
+                    self.user_course_dao.insert_user_courses(user_id, db_course_id)
+                    courses.append({"id": db_course_id, "name": course_name})
                 except RuntimeError as e:
                     # Might be duplicate, that's ok
                     self.logger.warning(
                         f"  ⚠️  User-course mapping exists or error: {e}"
                     )
-                    courses.append({"id": course_id, "name": course_name})
+                    courses.append({"id": db_course_id, "name": course_name})
 
             self.logger.info(f"✅ Saved {len(courses)} courses to database", force=True)
             return courses

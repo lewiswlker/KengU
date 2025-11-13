@@ -1,0 +1,65 @@
+{
+    "scraped_time": "2025-11-13 21:47:55",
+    "events": [
+        {
+            "date": "2025-11-26",
+            "title": "Assignment 2 - Assignment 2",
+            "time": "Wednesday, 26 November, 11:59 PM",
+            "course": "COMP7103 Data mining [Section 1A, 2025]",
+            "course_id": "127998",
+            "event_id": "7217403",
+            "event_type": "due",
+            "component": "mod_turnitintooltwo",
+            "description": "Assignment (PDF)\nDataset for Q1, description",
+            "submit_link": "https://moodle.hku.hk/mod/turnitintooltwo/view.php?id=3877434"
+        },
+        {
+            "date": "2025-11-28",
+            "title": "a4 is due",
+            "time": "Friday, 28 November, 11:59 PM",
+            "course": "COMP7404 Computational intelligence and machine learning [Section 1A, 2025]",
+            "course_id": "128017",
+            "event_id": "7576796",
+            "event_type": "due",
+            "component": "mod_assign",
+            "description": "",
+            "submit_link": "https://moodle.hku.hk/mod/assign/view.php?id=3925528&action=editsubmission"
+        },
+        {
+            "date": "2025-11-29",
+            "title": "Assignment 2 is due",
+            "time": "Saturday, 29 November, 11:59 PM",
+            "course": "COMP7607 Natural language processing [Section 1B, 2025]",
+            "course_id": "127958",
+            "event_id": "7599648",
+            "event_type": "due",
+            "component": "mod_assign",
+            "description": "",
+            "submit_link": "https://moodle.hku.hk/mod/assign/view.php?id=3927038&action=editsubmission"
+        },
+        {
+            "date": "2025-11-30",
+            "title": "Assignment II: Machine Translation (Optional) is due",
+            "time": "Sunday, 30 November, 11:59 PM",
+            "course": "DASC7606 Deep learning [Section 1B, 2025]",
+            "course_id": "128199",
+            "event_id": "7571132",
+            "event_type": "due",
+            "component": "mod_assign",
+            "description": "This assignment is\noptional\ndue to the coming final exams\nThe final assignment grades will be the maximum between Assignment 1 and 2",
+            "submit_link": "https://moodle.hku.hk/mod/assign/view.php?id=3925152&action=editsubmission"
+        },
+        {
+            "date": "2025-11-30",
+            "title": "Assignment 3 (Deadline: Nov 30 23:59) is due",
+            "time": "Sunday, 30 November, 11:59 PM",
+            "course": "COMP7409 Machine learning in trading and finance [Section 1A, 2025]",
+            "course_id": "128023",
+            "event_id": "7610201",
+            "event_type": "due",
+            "component": "mod_assign",
+            "description": "",
+            "submit_link": "https://moodle.hku.hk/mod/assign/view.php?id=3928333&action=editsubmission"
+        }
+    ]
+}

@@ -102,17 +102,18 @@ class CourseDAO:
         except ProgrammingError as e:
             raise RuntimeError(f"SQL execution error: {str(e)}") from e
 
-    def insert_name(self, course_name: str) -> Optional[int]:
+    def insert_name(self, course_name: str, course_id: int) -> Optional[int]:
         """
-        Insert new course name and return auto-generated ID
+        Insert new course name and course_id, return auto-generated ID
         :param course_name: Course name to insert (unique)
-        :return: Auto-generated course ID if successful, None otherwise
+        :param course_id: Course ID to insert (unique, not the auto-increment id field)
+        :return: Auto-generated id if successful, None otherwise
         """
-        sql = "INSERT INTO courses (course_name) VALUES (%s)"
+        sql = "INSERT INTO courses (course_name, course_id) VALUES (%s, %s)"
         try:
             with self.db_connector.get_connection() as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute(sql, (course_name,))
+                    cursor.execute(sql, (course_name, course_id))
                     conn.commit()
                     return cursor.lastrowid
         except IntegrityError as e:
@@ -188,5 +189,43 @@ class CourseDAO:
                     affected_rows = cursor.execute(sql, (update_time, course_id))
                     conn.commit()
                     return affected_rows > 0
+        except ProgrammingError as e:
+            raise RuntimeError(f"SQL execution error: {str(e)}") from e
+    # python
+    def find_all(self) -> List[dict]:
+        """
+        Find all courses
+        :return: List of all courses
+        """
+        sql = """
+            SELECT id, course_name, update_time_moodle, update_time_exambase
+            FROM courses
+            ORDER BY id ASC
+        """
+        try:
+            with self.db_connector.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql)
+                    return cursor.fetchall()
+        except ProgrammingError as e:
+            raise RuntimeError(f"SQL execution error: {str(e)}") from e
+
+    def find_by_id(self, course_id: int) -> Optional[dict]:
+        """
+        Find course by ID
+        :param course_id: Target course ID
+        :return: Course dict if exists, None otherwise
+        """
+        sql = """
+            SELECT id, course_name, update_time_moodle, update_time_exambase
+            FROM courses
+            WHERE id = %s
+            LIMIT 1
+        """
+        try:
+            with self.db_connector.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql, (course_id,))
+                    return cursor.fetchone()
         except ProgrammingError as e:
             raise RuntimeError(f"SQL execution error: {str(e)}") from e
