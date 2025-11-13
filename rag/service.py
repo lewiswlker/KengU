@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import os
 from typing import Dict, List, Optional, Tuple
+from pathlib import Path
 
 from dao import CourseDAO
-from .chunker import FixedChunker, build_chunks_from_docs
+from .chunker import RecursiveDocumentChunker, build_chunks_from_docs
 from .embedder import Embedder
 from .vector_store import ChromaVectorStore
 from .retriever import Retriever
@@ -17,9 +18,13 @@ class RagService:
 
     def __init__(self):
         index_dir = os.getenv("INDEX_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "vectorbase"))
-        self.chunker = FixedChunker(
-            chunk_size=int(os.getenv("CHUNK_SIZE", "500")),
-            chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "100")),
+        # Always use document-structure-aware chunker
+        self.chunker = RecursiveDocumentChunker(
+            target_tokens=int(os.getenv("TARGET_TOKENS", "1024")),
+            max_tokens=int(os.getenv("MAX_TOKENS", "1536")),
+            min_tokens=int(os.getenv("MIN_TOKENS", "200")),
+            overlap_tokens=int(os.getenv("OVERLAP_TOKENS", "150")),
+            token_chars_ratio=float(os.getenv("TOKEN_CHARS_RATIO", "4.0")),
         )
         self.embedder = Embedder()
         self.store = ChromaVectorStore(persist_dir=index_dir)
