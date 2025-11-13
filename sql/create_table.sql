@@ -1,32 +1,15 @@
-CREATE TABLE `users` (
+-- 创建 users 表
+CREATE TABLE IF NOT EXISTS `users` (
   `id` int NOT NULL AUTO_INCREMENT,
   `user_email` varchar(100) NOT NULL,
   `pwd` varchar(255) DEFAULT '',
   PRIMARY KEY (`id`),
   UNIQUE KEY `user_email` (`user_email`),
   KEY `idx_user_email` (`user_email`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE `user_courses` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `user_id` int NOT NULL,
-  `course_id` int NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `idx_user_id` (`user_id`),
-  KEY `idx_course_id` (`course_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-
-CREATE TABLE `study_sessions` (
-  `session_id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `assignment_id` bigint unsigned DEFAULT NULL,
-  `start_time` datetime NOT NULL,
-  `duration_minutes` int NOT NULL DEFAULT '0',
-  `notes` text COLLATE utf8mb4_unicode_ci,
-  PRIMARY KEY (`session_id`),
-  KEY `idx_study_sessions_assignment_id` (`assignment_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-
-CREATE TABLE `courses` (
+-- 创建 courses 表
+CREATE TABLE IF NOT EXISTS `courses` (
   `id` int NOT NULL AUTO_INCREMENT,
   `course_name` varchar(255) NOT NULL,
   `update_time_moodle` datetime DEFAULT NULL,
@@ -36,9 +19,20 @@ CREATE TABLE `courses` (
   UNIQUE KEY `course_name` (`course_name`),
   UNIQUE KEY `idx_course_id_unique` (`course_id`),
   KEY `idx_course_name` (`course_name`)
-) ENGINE=InnoDB AUTO_INCREMENT=48 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+) ENGINE=InnoDB AUTO_INCREMENT=48 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE `assignment` (
+-- 创建 user_courses 表
+CREATE TABLE IF NOT EXISTS `user_courses` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` int NOT NULL,
+  `course_id` int NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_course_id` (`course_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 创建 assignment 表
+CREATE TABLE IF NOT EXISTS `assignment` (
   `id` int NOT NULL AUTO_INCREMENT,
   `title` varchar(255) NOT NULL,
   `description` text,
@@ -55,6 +49,15 @@ CREATE TABLE `assignment` (
   PRIMARY KEY (`id`),
   KEY `course_id` (`course_id`),
   CONSTRAINT `assignment_ibfk_1` FOREIGN KEY (`course_id`) REFERENCES `courses` (`course_id`) ON DELETE SET NULL
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-
+-- 创建 study_sessions 表
+CREATE TABLE IF NOT EXISTS `study_sessions` (
+  `session_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `assignment_id` bigint unsigned DEFAULT NULL,
+  `start_time` datetime NOT NULL,
+  `duration_minutes` int NOT NULL DEFAULT '0',
+  `notes` text COLLATE utf8mb4_unicode_ci,
+  PRIMARY KEY (`session_id`),
+  KEY `idx_study_sessions_assignment_id` (`assignment_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
