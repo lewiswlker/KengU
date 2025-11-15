@@ -32,6 +32,7 @@ class ChatAgent:
         user_id: int | None = None,
         user_email: str | None = None,
         messages: list | None = None,
+        selected_course_ids: list[int] | None = None,
     ) -> AsyncGenerator[str]:
         """
         Route request to appropriate agent and generate response
@@ -41,6 +42,7 @@ class ChatAgent:
             user_id: Optional user ID to fetch credentials from database
             user_email: Optional user email to fetch credentials from database
             messages: Optional conversation history
+            selected_course_ids: Optional list of pre-selected course IDs to skip LLM filtering
 
         Yields:
             Response text chunks
@@ -64,7 +66,7 @@ class ChatAgent:
             elif agent_type == AgentType.PLANNER:
                 agent_tasks.append(asyncio.create_task(self._handle_planner_agent(user_request, user_id=user_id)))
             elif agent_type == AgentType.RAG:
-                agent_tasks.append(asyncio.create_task(self._handle_rag_agent(user_request, user_id=user_id)))
+                agent_tasks.append(asyncio.create_task(self._handle_rag_agent(user_request, user_id=user_id, selected_course_ids=selected_course_ids)))
             # AgentType.GENERAL doesn't need a specific handler
 
         # Execute all agent tasks concurrently
@@ -220,7 +222,12 @@ class ChatAgent:
             "summary": summary_text.strip(),
         }
 
-    async def _handle_rag_agent(self, user_request: str, user_id: int | None = None) -> dict | None:
+    async def _handle_rag_agent(
+        self, 
+        user_request: str, 
+        user_id: int | None = None, 
+        selected_course_ids: list[int] | None = None
+        ) -> dict | None:
         """
         Handle requests routed to the RAG agent
 
@@ -238,6 +245,7 @@ class ChatAgent:
                 answer_with_rag,
                 query=user_request,
                 user_id=user_id,
+                selected_course_ids=selected_course_ids
             )
 
             # Structure retrieval results for context

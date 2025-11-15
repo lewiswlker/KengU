@@ -12,3 +12,4 @@ vectorbase/
 dao/config.py
 vectorbase*
 *.json
+.*
