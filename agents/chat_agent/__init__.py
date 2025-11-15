@@ -153,8 +153,8 @@ class ChatAgent:
             dict: Result with 'success', 'data', and optional 'error' keys
         """
         llm_config = LLMConfig(
-            model_name=settings.LLM_MODEL_NAME,
-            api_endpoint=settings.LLM_API_ENDPOINT,
+            model=settings.LLM_MODEL_NAME,
+            base_url=settings.LLM_API_ENDPOINT,
             api_key=settings.LLM_API_KEY,
         )
         planner_agent = PlannerAgent(llm_config=llm_config)
