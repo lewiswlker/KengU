@@ -234,7 +234,7 @@ Analyze the query and return the relevant course name(s) from the list above. Re
 
 
 def answer_with_rag(
-    query: str, user_id: int
+    query: str, user_id: int, selected_course_ids: Optional[List[int]] = None
 ) -> Dict[str, Optional[List[RetrievalResult] | str]]:
     """
     Generate answer combined with RAG retrieval results for user's query
@@ -260,24 +260,31 @@ def answer_with_rag(
     try:
         # Initialize RAG Agent
         agent = RAGAgent()
-
+        
         # Step 1: Get user's enrolled courses from database
-        user_courses = agent.get_user_courses(user_id)
+        
+        if selected_course_ids:
+            selected_courses = []
+            for course_id in selected_course_ids:
+                course_name = agent.course_dao.find_name_by_id(course_id)
+                if course_name:
+                    selected_courses.append(course_name)
+        else:
+            user_courses = agent.get_user_courses(user_id)
+            if not user_courses:
+                return {
+                    "retrieval_results": [],
+                    "error": f"No courses found for user_id {user_id}",
+                }
 
-        if not user_courses:
-            return {
-                "retrieval_results": [],
-                "error": f"No courses found for user_id {user_id}",
-            }
+            # Step 2: Use LLM to select relevant courses based on query
+            selected_courses = agent.select_relevant_courses(query, user_courses)
 
-        # Step 2: Use LLM to select relevant courses based on query
-        selected_courses = agent.select_relevant_courses(query, user_courses)
-
-        if not selected_courses:
-            return {
-                "retrieval_results": [],
-                "error": None,
-            }
+            if not selected_courses:
+                return {
+                    "retrieval_results": [],
+                    "error": None,
+                }
 
         print(f"Selected courses for query '{query}': {selected_courses}")
         # Step 3: Retrieve and generate answer via RAG service

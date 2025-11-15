@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import List, Dict
+import re
 
 
 def _html_to_text(html: str) -> str:
@@ -17,6 +18,29 @@ def _html_to_text(html: str) -> str:
     return soup.get_text("\n", strip=True)
 
 
+def _clean_extracted_text(text: str) -> str:
+    """
+    Clean common PDF extraction artifacts to improve chunk quality.
+    """
+    if not text:
+        return ""
+    # Remove <latexit ...>...</latexit> blocks (often embedded LaTeX artifacts)
+    text = re.sub(r"<\s*latexit[^>]*>.*?<\s*/\s*latexit\s*>", " ", text, flags=re.DOTALL | re.IGNORECASE)
+    # Remove long base64-like blobs
+    text = re.sub(r"[A-Za-z0-9+/=]{80,}", " ", text)
+    # Normalize ligatures
+    text = text.replace("\ufb01", "fi").replace("\ufb02", "fl")
+    # Remove zero-width characters and BOM
+    text = re.sub(r"[\u200b\u200c\u200d\ufeff]", "", text)
+    # Fix hyphenation across line breaks: "exam-\nple" -> "example"
+    text = re.sub(r"-\s*\n\s*", "", text)
+    # Normalize whitespace
+    text = re.sub(r"[ \t]+", " ", text)
+    # Trim trailing spaces per line
+    text = "\n".join(ln.rstrip() for ln in text.splitlines())
+    return text
+
+
 def _pdf_to_text(path: str) -> str:
     # Primary: PyPDF2
     try:
@@ -24,10 +48,11 @@ def _pdf_to_text(path: str) -> str:
         text = ""
         with open(path, "rb") as f:
             reader = PdfReader(f)
-            for page in reader.pages:
+            for idx, page in enumerate(reader.pages, start=1):
+                text += f"=== Page {idx} ===\n"
                 text += (page.extract_text() or "") + "\n"
         if text.strip():
-            return text
+            return _clean_extracted_text(text)
     except Exception:
         pass
     # Fallback: PyMuPDF (fitz) if available
@@ -35,10 +60,11 @@ def _pdf_to_text(path: str) -> str:
         import fitz  # type: ignore
         text = ""
         with fitz.open(path) as doc:
-            for p in doc:
+            for idx, p in enumerate(doc, start=1):
+                text += f"=== Page {idx} ===\n"
                 text += (p.get_text() or "") + "\n"
         if text.strip():
-            return text
+            return _clean_extracted_text(text)
     except Exception:
         pass
     # Fallback: pdfminer.six if available
@@ -46,7 +72,7 @@ def _pdf_to_text(path: str) -> str:
         from pdfminer.high_level import extract_text  # type: ignore
         text = extract_text(path) or ""
         if text.strip():
-            return text
+            return _clean_extracted_text(text)
     except Exception:
         pass
     return ""
@@ -61,8 +87,26 @@ def _docx_to_text(path: str) -> str:
         d = docx.Document(path)
         lines = []
         for para in d.paragraphs:
-            if para.text:
-                lines.append(para.text)
+            txt = para.text or ""
+            if not txt.strip():
+                continue
+            # Heading styles: "Heading 1".."Heading 6"
+            try:
+                style_name = getattr(para.style, "name", "") or ""
+            except Exception:
+                style_name = ""
+            level = None
+            if style_name.startswith("Heading"):
+                try:
+                    n = int(style_name.split()[-1])
+                    if 1 <= n <= 6:
+                        level = n
+                except Exception:
+                    level = None
+            if level is not None:
+                lines.append("#" * level + " " + txt.strip())
+            else:
+                lines.append(txt)
         # tables
         for t in d.tables:
             for row in t.rows:
@@ -85,7 +129,18 @@ def _ppt_to_text(path: str) -> str:
         try:
             prs = Presentation(path)
             lines: List[str] = []
-            for slide in prs.slides:
+            for idx, slide in enumerate(prs.slides, start=1):
+                lines.append(f"=== Slide {idx} ===")
+                # slide title if available
+                title_text = ""
+                try:
+                    if getattr(slide, "shapes", None):
+                        if getattr(slide.shapes, "title", None) and slide.shapes.title and slide.shapes.title.text:
+                            title_text = slide.shapes.title.text.strip()
+                except Exception:
+                    title_text = ""
+                if title_text:
+                    lines.append("# " + title_text)
                 for shape in slide.shapes:
                     if hasattr(shape, "has_text_frame") and shape.has_text_frame:
                         for p in shape.text_frame.paragraphs:

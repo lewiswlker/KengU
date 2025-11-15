@@ -10,7 +10,13 @@ from bs4 import BeautifulSoup
 import json
 import time
 import os
-from .logger import get_logger
+import argparse
+import requests
+
+try:
+    from .logger import get_logger
+except ImportError:
+    from logger import get_logger
 
 CONNECT_TIME_OUT = 5  # seconds
 
@@ -823,10 +829,18 @@ class HKUMoodleScraper:
         self._log("Browser closed")
 
     def extract_courses(self, html_content):
-        """Extract course information from HTML content"""
+        """Extract course information from HTML content
+        
+        Returns:
+            list: List of dicts with 'course_name' and 'course_id' keys
+        """
+        import re
+        from urllib.parse import urlparse, parse_qs
+        
         soup = BeautifulSoup(html_content, "html.parser")
 
         courses = []
+        seen_courses = set()  # Track (name, id) pairs to avoid duplicates
 
         # Method 1: Extract from "My courses" page - Find course cards and links
         self._log("Method 1: Finding course cards and links...")
@@ -860,9 +874,35 @@ class HKUMoodleScraper:
                                 is_valid = False
                                 break
 
-                    # Add course (deduplicate)
-                    if is_valid and course_name not in courses:
-                        courses.append(course_name)
+                    # Extract course ID from URL
+                    if is_valid:
+                        href = link.get('href', '')
+                        course_id = None
+                        
+                        # Try to extract ID from URL parameter
+                        try:
+                            if '?id=' in href:
+                                # Parse URL and get id parameter
+                                parsed = urlparse(href)
+                                params = parse_qs(parsed.query)
+                                if 'id' in params and params['id']:
+                                    course_id = int(params['id'][0])
+                            elif 'id=' in href:
+                                # Simple regex fallback
+                                match = re.search(r'id=(\d+)', href)
+                                if match:
+                                    course_id = int(match.group(1))
+                        except (ValueError, IndexError) as e:
+                            self._log(f"Failed to extract course ID from {href}: {e}")
+                            continue
+
+                        # Add course with ID (deduplicate by name+id pair)
+                        if course_id and (course_name, course_id) not in seen_courses:
+                            courses.append({
+                                'course_name': course_name,
+                                'course_id': course_id
+                            })
+                            seen_courses.add((course_name, course_id))
 
         # Method 2: Find course cards (as supplement)
         if not courses:
@@ -883,8 +923,29 @@ class HKUMoodleScraper:
                         course_name = course_name_elem.get_text(
                             separator=" ", strip=True
                         )
-                        if course_name and course_name not in courses:
-                            courses.append(course_name)
+                        
+                        # Extract course ID
+                        if course_name_elem.name == 'a':
+                            href = course_name_elem.get('href', '')
+                        else:
+                            link = card.select_one("a[href*='course/view.php']")
+                            href = link.get('href', '') if link else ''
+                        
+                        course_id = None
+                        try:
+                            if '?id=' in href or 'id=' in href:
+                                match = re.search(r'id=(\d+)', href)
+                                if match:
+                                    course_id = int(match.group(1))
+                        except (ValueError, IndexError):
+                            pass
+                        
+                        if course_name and course_id and (course_name, course_id) not in seen_courses:
+                            courses.append({
+                                'course_name': course_name,
+                                'course_id': course_id
+                            })
+                            seen_courses.add((course_name, course_id))
 
         # Method 3: Find course list containers
         if not courses:
@@ -898,8 +959,23 @@ class HKUMoodleScraper:
                     course_link = container.select_one('a[href*="course/view.php"]')
                     if course_link:
                         course_name = course_link.get_text(separator=" ", strip=True)
-                        if course_name and course_name not in courses:
-                            courses.append(course_name)
+                        href = course_link.get('href', '')
+                        
+                        course_id = None
+                        try:
+                            if '?id=' in href or 'id=' in href:
+                                match = re.search(r'id=(\d+)', href)
+                                if match:
+                                    course_id = int(match.group(1))
+                        except (ValueError, IndexError):
+                            pass
+                        
+                        if course_name and course_id and (course_name, course_id) not in seen_courses:
+                            courses.append({
+                                'course_name': course_name,
+                                'course_id': course_id
+                            })
+                            seen_courses.add((course_name, course_id))
 
         # Method 4: Find from Dashboard or other areas
         if not courses:
@@ -909,12 +985,24 @@ class HKUMoodleScraper:
                 all_links = main_region.select('a[href*="course/view.php"]')
                 for link in all_links:
                     course_name = link.get_text(separator=" ", strip=True)
-                    if (
-                        course_name
-                        and len(course_name) > 10
-                        and course_name not in courses
-                    ):
-                        courses.append(course_name)
+                    href = link.get('href', '')
+                    
+                    if course_name and len(course_name) > 10:
+                        course_id = None
+                        try:
+                            if '?id=' in href or 'id=' in href:
+                                match = re.search(r'id=(\d+)', href)
+                                if match:
+                                    course_id = int(match.group(1))
+                        except (ValueError, IndexError):
+                            pass
+                        
+                        if course_id and (course_name, course_id) not in seen_courses:
+                            courses.append({
+                                'course_name': course_name,
+                                'course_id': course_id
+                            })
+                            seen_courses.add((course_name, course_id))
 
         if not courses:
             self._log("No course information found")
@@ -928,7 +1016,7 @@ class HKUMoodleScraper:
         else:
             self._log(f"\nSuccessfully found {len(courses)} courses:")
             for i, course in enumerate(courses, 1):
-                self._log(f"{i}. {course}")
+                self._log(f"{i}. {course['course_name']} (ID: {course['course_id']})")
             self.courses = courses
 
         return courses
@@ -1000,34 +1088,39 @@ def main():
     # Login and get courses
     login_duration = scraper.connect_moodle(username, password)
     courses, extract_course_duration = scraper.get_courses()
+    
+    print("Courses:", courses)
+    
+    for course in courses:
+        print(f"{course['course_name']} (ID: {course['course_id']})")   
 
     # Save course information
-    if courses:
-        scraper.save_courses()
-        logger.info("\n========== Summary ==========", force=True)
-        logger.info(f"Successfully scraped {len(courses)} courses:", force=True)
-        for i, course in enumerate(courses, 1):
-            logger.info(f"{i}. {course}", force=True)
-        logger.info("============================\n", force=True)
-    else:
-        logger.error("Failed to scrape any course information")
-        scraper.close()
-        return
+    # if courses:
+    #     scraper.save_courses()
+    #     logger.info("\n========== Summary ==========", force=True)
+    #     logger.info(f"Successfully scraped {len(courses)} courses:", force=True)
+    #     for i, course in enumerate(courses, 1):
+    #         logger.info(f"{i}. {course['course_name']} (ID: {course['course_id']})", force=True)
+    #     logger.info("============================\n", force=True)
+    # else:
+    #     logger.error("Failed to scrape any course information")
+    #     scraper.close()
+    #     return
 
-    logger.info(f"Login Cost: {login_duration:.2f} seconds", force=True)
-    logger.info(
-        f"Courses Getting Cost: {extract_course_duration:.2f} seconds", force=True
-    )
+    # logger.info(f"Login Cost: {login_duration:.2f} seconds", force=True)
+    # logger.info(
+    #     f"Courses Getting Cost: {extract_course_duration:.2f} seconds", force=True
+    # )
 
-    # Download course materials if requested
-    if args.download:
-        logger.info("\n" + "=" * 50, force=True)
-        logger.info("Starting download of course materials...", force=True)
-        logger.info("=" * 50 + "\n", force=True)
+    # # Download course materials if requested
+    # if args.download:
+    #     logger.info("\n" + "=" * 50, force=True)
+    #     logger.info("Starting download of course materials...", force=True)
+    #     logger.info("=" * 50 + "\n", force=True)
 
-        downloaded_count = scraper.download_all_courses()
+    #     downloaded_count = scraper.download_all_courses()
 
-        logger.info(f"\nTotal files downloaded: {downloaded_count}", force=True)
+    #     logger.info(f"\nTotal files downloaded: {downloaded_count}", force=True)
 
     scraper.close()
 

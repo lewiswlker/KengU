@@ -9,4 +9,7 @@ vectorbase/
 .DS_Store
 .env
 /venv
-/dao/initialize_database.py
+dao/config.py
+vectorbase*
+*.json
+.*
