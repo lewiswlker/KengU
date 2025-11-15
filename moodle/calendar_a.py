@@ -418,7 +418,7 @@ def main():
         help="HKU email address",
     )
     parser.add_argument(
-        "-p", "--password", type=str, default="htngb20030912", help="Password"
+        "-p", "--password", type=str, default="password", help="Password"
     )
     parser.add_argument(
         "--headless",
