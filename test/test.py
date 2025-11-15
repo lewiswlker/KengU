@@ -67,3 +67,16 @@ if __name__ == "__main__":
         for detail in progress_res.details:
             detail_type = detail.get('type', 'unknown')
             print(f"  - {detail_type}: {detail}")
+
+    # 测试更新任务状态
+    print("\n🚀 开始测试更新任务状态...")
+    res = planner_agent.action({
+        'action': "update_assignment_status",
+        "data": {
+            "assignment_id": 10,
+            "user_id": 1,
+            "status": "completed"  # 可以改为其他状态如 'pending', 'overdue'
+        }
+    })
+    print("✅ 更新结果:")
+    print(res)

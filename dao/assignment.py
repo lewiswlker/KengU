@@ -449,3 +449,14 @@ class AssignmentDAO:
                     conn.close()
                 except Exception:
                     pass
+
+    def update_status(self, conn, assignment_id: int, status: str) -> bool:
+        """
+        Update assignment status.
+        Returns True if a row was updated.
+        """
+        pk = self._detect_pk_column(conn)
+        sql = f"UPDATE assignment SET status = %s WHERE `{pk}` = %s"
+        with conn.cursor() as cur:
+            cur.execute(sql, (status, assignment_id))
+            return cur.rowcount > 0
