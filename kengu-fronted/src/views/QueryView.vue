@@ -388,6 +388,7 @@ const submitQuestion = async () => {
     const decoder = new TextDecoder('utf-8')
     let buffer = ''
     let isStreaming = true
+    let retrievalSources = []  // 存储检索到的来源
 
     while (isStreaming) {
       const { done, value } = await reader.read()
@@ -400,9 +401,29 @@ const submitQuestion = async () => {
           try {
             const dataStr = line.slice(6)
             const { chunk } = JSON.parse(dataStr)
-            currentAiContent.value += chunk
-            await nextTick()
-            scrollToLatest()
+            
+            // 检查是否是来源数据
+            if (chunk.startsWith('__SOURCES__:') && chunk.includes('__END_SOURCES__')) {
+              const sourcesJson = chunk.replace('__SOURCES__:', '').replace('__END_SOURCES__', '')
+              try {
+                const sources = JSON.parse(sourcesJson)
+                // 转换为前端需要的格式
+                retrievalSources = sources.map(s => ({
+                  name: s.title || '未命名来源',
+                  url: s.source_url || '#',
+                  relevance: s.relevance_score || 0,
+                  text: s.text || ''
+                }))
+                console.log('接收到检索来源：', retrievalSources)
+              } catch (e) {
+                console.error('解析来源数据失败：', e)
+              }
+            } else {
+              // 正常的文本内容
+              currentAiContent.value += chunk
+              await nextTick()
+              scrollToLatest()
+            }
           } catch (e) {
             console.error('解析流式数据失败：', e)
           }
@@ -417,7 +438,7 @@ const submitQuestion = async () => {
         role: 'assistant',
         content: currentAiContent.value,
         time: new Date().toLocaleString(),
-        sources: []
+        sources: retrievalSources  // 使用检索到的来源
       })
       currentAiContent.value = ''
       await nextTick()
