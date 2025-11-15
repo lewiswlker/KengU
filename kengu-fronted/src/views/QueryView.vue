@@ -334,7 +334,8 @@ const fetchAskQuestion = (user_request, user_id, email, messages) => {
       user_request,
       user_id: user_id ? Number(user_id) : null,
       user_email: email,
-      messages
+      messages,
+      selected_course_ids: selectedCourses.value.map(c => c.id)
     }),
     signal: abortController.value?.signal
   })
