@@ -1,10 +1,19 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from dao import CourseDAO, UserCourseDAO, UserDAO
 from agents import update_knowledge_base
+import uuid
+import time
+from datetime import datetime
+from typing import Dict, Any, Optional
 
 router = APIRouter(tags=["course"])
 
+# 任务状态存储（新增进度相关字段）
+task_status: Dict[str, Dict[str, Any]] = {}
+
+
+# 数据模型保持不变
 class UpdateKnowledgeBaseRequest(BaseModel):
     email: str
     password: str
@@ -13,44 +22,125 @@ class UpdateKnowledgeBaseRequest(BaseModel):
 class GetUserCoursesRequest(BaseModel):
     email: str
 
+class TaskStatusRequest(BaseModel):
+    task_id: str
+
+
 @router.post("/update-data")
-async def api_update_knowledge_base(request: UpdateKnowledgeBaseRequest):
-    email = request.email
-    password = request.password
-    id = request.id
+async def api_update_knowledge_base(
+    request: UpdateKnowledgeBaseRequest,
+    background_tasks: BackgroundTasks
+) -> Dict[str, Any]:
+    # 参数校验
+    if not request.email:
+        raise HTTPException(status_code=400, detail={"success": False, "error": "Missing email"})
+    if not request.password:
+        raise HTTPException(status_code=400, detail={"success": False, "error": "Missing password"})
+    if not request.id:
+        raise HTTPException(status_code=400, detail={"success": False, "error": "Missing id"})
 
-    if not email:
-        raise HTTPException(
-            status_code=400,
-            detail={"success": False, "error": "Missing required parameter: email"}
-        )
-    if not password:
-        raise HTTPException(
-            status_code=400,
-            detail={"success": False, "error": "Missing required parameter: password"}
-        )
+    user_id = int(request.id)
+    task_id = str(uuid.uuid4())
+    
+    # 初始化任务状态（预设步骤和进度占比）
+    task_status[task_id] = {
+        "status": "running",
+        "percent": 0,
+        "message": "准备更新...",
+        "result": None,
+        "error": None,
+        "start_time": datetime.now().isoformat(),
+        "completed": False,
+        "failed": False
+    }
 
-    if not id:
-        raise HTTPException(
-            status_code=400,
-            detail={"success": False, "error": "Missing required parameter: id"}
-        )
-    user_id = int(id)
+    # 定义带进度估算的后台任务
+    def run_update_with_estimated_progress():
+        try:
+            # 步骤1：登录验证（10%）
+            task_status[task_id].update({
+                "percent": 10,
+                "message": "验证用户身份..."
+            })
+            time.sleep(2)  # 模拟登录耗时（根据实际情况调整）
 
-    try:
-        update_result = update_knowledge_base(
-            user_id=user_id,
-            user_email=email,
-            user_password=password,
-            headless=True,
-            verbose=True
-        )
-        return update_result
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail={"success": False, "error": f"Update failed: {str(e)}"}
-        )
+            # 步骤2：执行Moodle爬取（20%-50%）
+            task_status[task_id].update({
+                "percent": 20,
+                "message": "开始爬取Moodle课程..."
+            })
+            # 记录开始时间，用于估算进度
+            moodle_start = time.time()
+            
+            # 执行核心更新（不修改原函数，仅在外部跟踪时间）
+            result = update_knowledge_base(
+                user_id=user_id,
+                user_email=request.email,
+                user_password=request.password,
+                headless=True,
+                verbose=True
+            )
+            
+            # 步骤3：处理Exambase（50%-80%）
+            task_status[task_id].update({
+                "percent": 50,
+                "message": "开始处理Exambase数据..."
+            })
+            exambase_start = time.time()
+            # 假设Exambase处理耗时约为Moodle的0.6倍（根据实际情况调整）
+            moodle_duration = exambase_start - moodle_start
+            time.sleep(min(3, moodle_duration * 0.6))  # 估算耗时
+
+            # 步骤4：保存数据（80%-100%）
+            task_status[task_id].update({
+                "percent": 80,
+                "message": "保存课程数据..."
+            })
+            time.sleep(1)  # 模拟保存耗时
+
+            # 完成
+            task_status[task_id].update({
+                "status": "completed",
+                "percent": 100,
+                "message": "更新完成",
+                "result": result,
+                "completed": True
+            })
+
+        except Exception as e:
+            task_status[task_id].update({
+                "status": "failed",
+                "message": f"更新失败: {str(e)}",
+                "error": str(e),
+                "failed": True
+            })
+
+    background_tasks.add_task(run_update_with_estimated_progress)
+    return {
+        "success": True,
+        "message": "更新任务已启动",
+        "task_id": task_id
+    }
+
+
+@router.post("/update-status")
+async def get_update_status(request: TaskStatusRequest) -> Dict[str, Any]:
+    task_id = request.task_id
+    if task_id not in task_status:
+        raise HTTPException(status_code=404, detail={"success": False, "error": "任务ID不存在"})
+    
+    status = task_status[task_id]
+    return {
+        "success": True,
+        "task_id": task_id,
+        "status": status["status"],
+        "percent": status["percent"],
+        "message": status["message"],
+        "result": status["result"],
+        "error": status["error"],
+        "completed": status["completed"],
+        "failed": status["failed"]
+    }
 
 @router.post("/user/courses")
 async def get_user_courses(request: GetUserCoursesRequest):

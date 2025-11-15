@@ -177,6 +177,21 @@ class AssignmentDAO:
             # many DB drivers expose the last executed SQL under different attributes
             last_executed = getattr(cur, "_last_executed", None) or getattr(cur, "last_executed", None)
             return (bool(rowcount and rowcount > 0), int(rowcount or 0), last_executed)
+        
+    def mark_pending(self, conn, assignment_id: int):
+        """
+        Debug variant: returns (updated: bool, rowcount: int, last_executed: Optional[str])
+        Caller must commit/rollback.
+        """
+        pk = self._detect_pk_column(conn)
+        sql = f"UPDATE assignment SET status = 'pending' WHERE `{pk}` = %s AND status != 'pending'"
+        cursor_args = ()
+        with conn.cursor(*cursor_args) as cur:
+            cur.execute(sql, (assignment_id,))
+            rowcount = getattr(cur, "rowcount", None)
+            # many DB drivers expose the last executed SQL under different attributes
+            last_executed = getattr(cur, "_last_executed", None) or getattr(cur, "last_executed", None)
+            return (bool(rowcount and rowcount > 0), int(rowcount or 0), last_executed)
 
     # 在 AssignmentDAO 类中添加以下方法
 

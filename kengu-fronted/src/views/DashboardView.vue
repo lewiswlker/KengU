@@ -1,6 +1,6 @@
 <template>
   <div class="dashboard-page">
-    <!-- 统一头部 -->
+    <!-- 头部区域 -->
     <el-header class="hku-header">
       <div class="header-left">
         <el-button 
@@ -44,38 +44,71 @@
       <div class="calendar-container">
         <h3 class="section-title">Calendar</h3>
         <el-card class="calendar-card">
-          <!-- 自定义日历头部（含月份切换） -->
-          <template #header="headerProps">
-            <el-button-group size="small">
-              <el-button @click="changeMonth('prev-month')">
-                <el-icon><ArrowLeft /></el-icon>
-              </el-button>
-              <span class="month-title">{{ headerProps.date ? formatMonth(headerProps.date) : '' }}</span>
-              <el-button @click="changeMonth('next-month')">
-                <el-icon><ArrowRight /></el-icon>
-              </el-button>
-            </el-button-group>
-          </template>
+          <!-- 日历头部 -->
+          <div class="calendar-header">
+            <el-button 
+              size="small" 
+              icon="ArrowLeft" 
+              @click="changeMonth('prev')"
+              class="month-nav-btn"
+            />
+            <div class="title-group">
+              <h4 class="month-title">{{ currentYear }}年{{ currentMonth + 1 }}月</h4>
+              <el-button 
+                type="primary" 
+                size="small" 
+                icon="Refresh" 
+                @click="goToToday"
+                class="today-btn"
+                title="回到今日"
+              />
+            </div>
+            <el-button 
+              size="small" 
+              icon="ArrowRight" 
+              @click="changeMonth('next')"
+              class="month-nav-btn"
+            />
+          </div>
 
-          <!-- 日历组件 -->
-          <el-calendar v-model="currentDate">
-            <template #date-cell="scope">
-              <div class="calendar-cell" v-if="scope.date">
-                <span :class="{ 
-                  'current-day': isToday(scope.date), 
-                  'event-day': hasEvent(scope.date) 
-                }">
-                  {{ scope.date.getDate() }}
-                </span>
-                <!-- 事件标记 -->
-                <div v-if="hasEvent(scope.date)" class="event-dot"></div>
+          <!-- 日历表格 - 42天布局 -->
+          <div class="calendar-table">
+            <div class="calendar-week">
+              <div v-for="weekday in weekdays" :key="weekday" class="calendar-weekday">
+                {{ weekday }}
               </div>
-            </template>
-          </el-calendar>
+            </div>
+            <div class="calendar-days">
+              <div 
+                v-for="(date, index) in calendarDays" 
+                :key="index"
+                :class="[
+                  'calendar-day',
+                  { 'current-day': isCurrentDay(date) },
+                  { 'event-day': hasEvent(date) },
+                  { 'other-month': !isSameMonth(date) },
+                  { 'selected-day': isSelectedDay(date) }
+                ]"
+                @click="handleDateClick(date)"
+              >
+                <div class="day-number">{{ date.getDate() }}</div>
+                <div class="day-events" v-if="hasEvent(date)">
+                  <div 
+                    v-for="(event, idx) in getDayEvents(date)" 
+                    :key="idx"
+                    class="event-item"
+                  >
+                    <span class="event-icon">●</span>
+                    {{ truncateText(event.name, 12) }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </el-card>
       </div>
 
-      <!-- 中间 To Do List 区域 -->
+      <!-- 中间待办列表 -->
       <div class="todo-container">
         <h3 class="section-title">To Do List</h3>
         <el-card class="todo-card">
@@ -95,19 +128,16 @@
         </el-card>
       </div>
 
-      <!-- 右侧聊天助手区域（与Query页面完全一致） -->
+      <!-- 右侧聊天区域 -->
       <div class="chat-container">
         <h3 class="section-title">KengU Assistant</h3>
         <div class="qa-container">
-          <!-- 回答区域（可滚动） -->
           <div class="answer-container">
             <el-scrollbar class="chat-scroll">
-              <!-- 空状态 -->
               <div v-if="chatHistory.length === 0" class="empty-answer">
                 <p>Welcome to KengU. How can I help you?</p>
               </div>
               
-              <!-- 聊天消息列表 -->
               <div v-else class="chat-messages">
                 <div 
                   v-for="(msg, index) in chatHistory" 
@@ -121,7 +151,6 @@
                   </div>
                   <div class="message-content" v-html="formatMessage(msg.content)"></div>
                   
-                  <!-- AI 回答的参考来源 -->
                   <div v-if="msg.role === 'assistant' && msg.sources?.length" class="message-sources">
                     <h4>参考来源：</h4>
                     <el-link
@@ -137,7 +166,6 @@
                   </div>
                 </div>
                 
-                <!-- AI 正在输入提示 -->
                 <div v-if="isGenerating" class="chat-message ai-message generating" ref="typingRef">
                   <div class="message-role">
                     KengU Assistant
@@ -151,9 +179,7 @@
             </el-scrollbar>
           </div>
 
-          <!-- 固定提问区域（与Query页面完全一致） -->
           <div class="fixed-input-container">
-            <!-- 课程引用标签区域 -->
             <div class="reference-tags" v-if="selectedCourses.length > 0">
               <el-tag 
                 v-for="course in selectedCourses" 
@@ -214,320 +240,436 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { useUserStore } from '../stores/user'
-import { User, ArrowDown, Search, ArrowLeft, ArrowRight, Document} from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue';
+import { useRouter } from 'vue-router';
+import { useUserStore } from '../stores/user';
+import { User, ArrowDown, Search, Document } from '@element-plus/icons-vue';
+import { ElMessage, ElLoading } from 'element-plus';
+import { 
+  get_assignments_by_date_range, 
+  mark_assignment_complete,
+  mark_assignment_pending  // 导入新增的API函数
+} from '../services/api';
 
-const userStore = useUserStore()
-const router = useRouter()
+// 状态管理与路由
+const userStore = useUserStore();
+const router = useRouter();
 
-// 核心状态（与Query页面完全一致）
-const question = ref('')
-const isLoading = ref(false)
-const isGenerating = ref(false)
-const chatHistory = ref([])
-const currentAiContent = ref('')
-const abortController = ref(null)
-const selectedCourses = ref([])  // 课程引用功能
-const currentDate = ref(new Date())
-const selectedDateEvents = ref([])
+// 核心状态（保持不变）
+const question = ref('');
+const isLoading = ref(false);
+const isGenerating = ref(false);
+const chatHistory = ref([]);
+const currentAiContent = ref('');
+const abortController = ref(null);
+const selectedCourses = ref([]);
+const currentDate = ref(new Date());
+const selectedDateEvents = ref([]);
+const eventsData = ref([]);
+const currentYear = ref(new Date().getFullYear());
+const currentMonth = ref(new Date().getMonth());
+const typingRef = ref(null);
+const messageRefs = ref([]);
 
-// DOM引用（与Query页面一致）
-const messageRefs = ref([])
-const typingRef = ref(null)
+// 日历配置 - 星期表头
+const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
 
-// 模拟日历事件数据
-const eventsData = ref([
-  {
-    date: new Date(new Date().setDate(new Date().getDate() + 1)),
-    name: 'COMP7103 Lecture',
-    description: '14:30 - 16:00 | Room 201, Main Building',
-    completed: false
-  },
-  {
-    date: new Date(new Date().setDate(new Date().getDate() + 3)),
-    name: 'Final Exam Review',
-    description: '10:00 - 12:00 | Online Zoom',
-    completed: false
-  },
-  {
-    date: new Date(),
-    name: 'Assignment Deadline',
-    description: 'COMP7747 Assignment 2 Due Today',
-    completed: false
-  },
-  {
-    date: new Date(new Date().setDate(new Date().getDate() + 5)),
-    name: 'Group Project Meeting',
-    description: '15:00 - 17:00 | Library Study Room 3',
-    completed: false
+// 计算42天日历（保持不变）
+const calendarDays = computed(() => {
+  const days = [];
+  const firstDay = new Date(currentYear.value, currentMonth.value, 1);
+  const firstDayWeekday = firstDay.getDay();
+  
+  for (let i = firstDayWeekday; i > 0; i--) {
+    const date = new Date(currentYear.value, currentMonth.value, -i + 1);
+    days.push(date);
   }
-])
+  
+  const lastDay = new Date(currentYear.value, currentMonth.value + 1, 0);
+  const totalDays = lastDay.getDate();
+  for (let i = 1; i <= totalDays; i++) {
+    const date = new Date(currentYear.value, currentMonth.value, i);
+    days.push(date);
+  }
+  
+  const remaining = 42 - days.length;
+  for (let i = 1; i <= remaining; i++) {
+    const date = new Date(currentYear.value, currentMonth.value + 1, i);
+    days.push(date);
+  }
+  
+  return days;
+});
 
-// 滚动到最新消息（与Query页面一致）
+// 工具函数：检查日期有效性（保持不变）
+const isValidDate = (date) => {
+  return date && date instanceof Date && !isNaN(date.getTime());
+};
+
+// 滚动到最新消息（保持不变）
 const scrollToLatest = async () => {
-  await nextTick()
+  await nextTick();
   if (isGenerating.value && typingRef.value) {
-    typingRef.value.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    typingRef.value.scrollIntoView({ behavior: 'smooth', block: 'end' });
   } else if (messageRefs.value.length > 0) {
-    messageRefs.value[messageRefs.value.length - 1].scrollIntoView({ behavior: 'smooth', block: 'end' })
+    messageRefs.value[messageRefs.value.length - 1].scrollIntoView({ behavior: 'smooth', block: 'end' });
   }
-}
+};
 
-// 课程引用功能（与Query页面完全一致）
+// 课程引用功能（保持不变）
 const removeCourseReference = (courseId) => {
-  selectedCourses.value = selectedCourses.value.filter(course => course.id !== courseId)
-}
+  selectedCourses.value = selectedCourses.value.filter(course => course.id !== courseId);
+};
 
-// 导航方法
-const goToQuery = () => router.push('/query')
-const goToDashboard = () => router.push('/dashboard')
-const goToProfile = () => router.push('/profile')
+// 导航方法（保持不变）
+const goToQuery = () => router.push('/query');
+const goToDashboard = () => router.push('/dashboard');
+const goToProfile = () => router.push('/profile');
 
-// 页面初始化
-onMounted(() => {
-  if (!userStore.email) router.push('/')
-  // 加载课程（与Query页面一致）
-  if (userStore.courses.length === 0) userStore.loadCourses()
-  // 初始化日历
-  if (!currentDate.value || !(currentDate.value instanceof Date) || isNaN(currentDate.value.getTime())) {
-    currentDate.value = new Date()
+// 回到今日（保持不变）
+const goToToday = () => {
+  const today = new Date();
+  currentYear.value = today.getFullYear();
+  currentMonth.value = today.getMonth();
+  currentDate.value = today;
+  loadAllAssignments();
+  ElMessage.success('已回到今日');
+};
+
+// 获取作业数据（保持不变）
+const fetchAssignmentsByDateRange = async (startDate, endDate) => {
+  const loading = ElLoading.service({
+    lock: false,
+    text: 'Loading assignments...',
+    background: 'rgba(255, 255, 255, 0.7)'
+  });
+
+  try {
+    const result = await get_assignments_by_date_range(startDate, endDate, userStore.id);
+    loading.close();
+    return result.success ? result.data : [];
+  } catch (error) {
+    loading.close();
+    console.error('获取作业数据出错:', error);
+    ElMessage.error('网络错误，无法获取作业数据');
+    return [];
   }
-  selectedDateEvents.value = getSelectedDateEvents()
-})
+};
 
-// 组件卸载时中断请求（与Query页面一致）
+// 标记作业完成（保持不变）
+const markAssignmentComplete = async (assignmentId) => {
+  try {
+    console.log(`调用接口：POST /api/assignments/mark-complete`);
+    console.log(`请求参数：assignment_id=${assignmentId}`);
+    return await mark_assignment_complete(assignmentId);
+  } catch (error) {
+    console.error('更新作业状态出错:', error);
+    return { success: false, error: '网络错误' };
+  }
+};
+
+// 新增：标记作业为待处理状态
+const markAssignmentPending = async (assignmentId) => {
+  try {
+    console.log(`调用接口：POST /api/assignments/mark-pending`);
+    console.log(`请求参数：assignment_id=${assignmentId}`);
+    return await mark_assignment_pending(assignmentId);
+  } catch (error) {
+    console.error('更新作业为待处理状态出错:', error);
+    return { success: false, error: '网络错误' };
+  }
+};
+
+// 初始化加载作业（保持不变）
+onMounted(async () => {
+  if (!userStore.email) {
+    router.push('/');
+    return;
+  }
+  await loadAllAssignments();
+});
+
+// 加载作业（保持不变）
+const loadAllAssignments = async () => {
+  const startDate = new Date(calendarDays.value[0]);
+  startDate.setHours(0, 0, 0, 0);
+  const endDate = new Date(calendarDays.value[41]);
+  endDate.setHours(23, 59, 59, 999);
+  
+  const startDateStr = startDate.toISOString().split('T')[0];
+  const endDateStr = endDate.toISOString().split('T')[0];
+  
+  const assignments = await fetchAssignmentsByDateRange(startDateStr, endDateStr);
+  eventsData.value = assignments.map(assignment => ({
+    date: new Date(assignment.due_date),
+    name: assignment.title,
+    description: `Course: ${assignment.course_name || 'Unknown'}\nType: ${assignment.assignment_type || 'N/A'}`,
+    completed: assignment.status === 'completed',
+    assignmentId: assignment.id
+  })).filter(item => isValidDate(item.date));
+
+  selectedDateEvents.value = getSelectedDateEvents();
+};
+
+// 组件卸载时清理（保持不变）
 onUnmounted(() => {
-  if (abortController.value) {
-    abortController.value.abort()
-  }
-})
+  if (abortController.value) abortController.value.abort();
+});
 
-// 清空输入框（与Query页面一致）
+// 聊天相关方法（保持不变）
 const clearInput = () => {
-  question.value = ''
-  selectedCourses.value = []
-}
+  question.value = '';
+  selectedCourses.value = [];
+};
 
-// 格式化消息（与Query页面一致）
-const formatMessage = (content) => {
-  return content.replace(/\n/g, '<br/>')
-}
+const formatMessage = (content) => content.replace(/\n/g, '<br/>');
 
-// 终止生成（与Query页面一致）
 const stopGeneration = () => {
   if (abortController.value) {
-    abortController.value.abort()
-    console.log('已终止回答')
-    
+    abortController.value.abort();
     if (currentAiContent.value.trim()) {
       chatHistory.value.push({
         role: 'assistant',
         content: currentAiContent.value,
         time: new Date().toLocaleString(),
         sources: []
-      })
+      });
     }
-    
-    isGenerating.value = false
-    currentAiContent.value = ''
-    scrollToLatest()
-    ElMessage.info('已终止回答生成')
+    isGenerating.value = false;
+    currentAiContent.value = '';
+    scrollToLatest();
+    ElMessage.info('已终止回答生成');
   }
-}
+};
 
-// 请求方法（与Query页面完全一致）
 const fetchAskQuestion = (user_request, user_id, email, messages) => {
   return fetch('http://localhost:5000/api/chat/stream', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'text/event-stream'
-    },
-    body: JSON.stringify({
-      user_request,
-      user_id: user_id ? Number(user_id) : null,
-      user_email: email,
-      messages
-    }),
+    headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+    body: JSON.stringify({ user_request, user_id: user_id ? Number(user_id) : null, user_email: email, messages }),
     signal: abortController.value?.signal
-  })
-}
+  });
+};
 
-// 提交问题（与Query页面完全一致）
 const submitQuestion = async () => {
-  let finalQuestion = question.value.trim()
+  let finalQuestion = question.value.trim();
   if (selectedCourses.value.length > 0) {
-    const courseNames = selectedCourses.value.map(course => course.name).join('、')
-    finalQuestion = `[课程: ${courseNames}] ${finalQuestion}`
+    const courseNames = selectedCourses.value.map(course => course.name).join('、');
+    finalQuestion = `[课程: ${courseNames}] ${finalQuestion}`;
   }
 
-  if (!finalQuestion) return
+  if (!finalQuestion) return;
 
-  const userMsg = {
+  chatHistory.value.push({
     role: 'user',
     content: finalQuestion,
     time: new Date().toLocaleString()
-  }
-  chatHistory.value.push(userMsg)
-  question.value = ''
-  selectedCourses.value = []
-  isGenerating.value = true
-  currentAiContent.value = ''
-
-  const messagesParams = chatHistory.value.map(msg => ({
-    role: msg.role,
-    content: msg.content
-  }))
+  });
+  question.value = '';
+  selectedCourses.value = [];
+  isGenerating.value = true;
+  currentAiContent.value = '';
 
   try {
-    abortController.value = new AbortController()
-
+    abortController.value = new AbortController();
     const response = await fetchAskQuestion(
       finalQuestion,
       userStore.id,
       userStore.email,
-      messagesParams
-    )
+      chatHistory.value.map(msg => ({ role: msg.role, content: msg.content }))
+    );
 
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-    if (!response.body || typeof response.body.getReader !== 'function') {
-      throw new Error('无效的流式响应')
-    }
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let done = false;
 
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder('utf-8')
-    let buffer = ''
-    let t = true
+    while (!done) {
+      const { done: readerDone, value } = await reader.read();
+      done = readerDone;
+      if (done) break;
 
-    while (t) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n\n')
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
       
       for (const line of lines) {
         if (line.startsWith('data: ') && line.trim() !== 'data: ') {
           try {
-            const { chunk } = JSON.parse(line.slice(6))
-            currentAiContent.value += chunk
-            await nextTick()
-            scrollToLatest()
-          } catch (e) {
-            console.error('解析错误:', e)
-          }
+            const { chunk } = JSON.parse(line.slice(6));
+            currentAiContent.value += chunk;
+            await nextTick();
+            scrollToLatest();
+          } catch (e) { console.error('解析错误:', e); }
         }
       }
-      buffer = lines[lines.length - 1] || ''
+      buffer = lines[lines.length - 1] || '';
     }
 
-    isGenerating.value = false
+    isGenerating.value = false;
     if (currentAiContent.value) {
       chatHistory.value.push({
         role: 'assistant',
         content: currentAiContent.value,
         time: new Date().toLocaleString(),
         sources: []
-      })
-      currentAiContent.value = ''
-      scrollToLatest()
+      });
+      currentAiContent.value = '';
+      scrollToLatest();
     }
 
   } catch (error) {
-    isGenerating.value = false
+    isGenerating.value = false;
     if (error.name !== 'AbortError') {
-      console.error('提问失败:', error)
-      ElMessage.error('查询失败，请重试')
-      chatHistory.value.pop()
+      console.error('提问失败:', error);
+      ElMessage.error('查询失败，请重试');
+      chatHistory.value.pop();
     }
   } finally {
-    abortController.value = null
+    abortController.value = null;
   }
-}
+};
 
-// 退出登录（与Query页面一致）
+// 退出登录（保持不变）
 const handleLogout = () => {
   if (confirm('确定要退出登录吗？')) {
-    if (abortController.value) abortController.value.abort()
-    userStore.logout()
-    router.push('/')
+    if (abortController.value) abortController.value.abort();
+    userStore.logout();
+    router.push('/');
   }
-}
+};
 
-// 日历相关方法
+// 切换月份（保持不变）
 const changeMonth = (type) => {
-  let newDate
-  if (currentDate.value && currentDate.value instanceof Date && !isNaN(currentDate.value.getTime())) {
-    newDate = new Date(currentDate.value)
+  if (type === 'prev') {
+    currentMonth.value--;
+    if (currentMonth.value < 0) {
+      currentMonth.value = 11;
+      currentYear.value--;
+    }
   } else {
-    newDate = new Date()
+    currentMonth.value++;
+    if (currentMonth.value > 11) {
+      currentMonth.value = 0;
+      currentYear.value++;
+    }
   }
+  loadAllAssignments();
+};
 
-  if (type === 'prev-month') {
-    newDate.setMonth(newDate.getMonth() - 1)
-  } else if (type === 'next-month') {
-    newDate.setMonth(newDate.getMonth() + 1)
-  }
-  currentDate.value = newDate
-}
-
-const formatMonth = (date) => {
-  if (!date || !(date instanceof Date) || isNaN(date.getTime())) return ''
-  return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' })
-}
-
+// 日期格式化（保持不变）
 const formatDate = (date) => {
-  if (!date || !(date instanceof Date) || isNaN(date.getTime())) return ''
-  return date.toLocaleDateString('en-US', { 
+  return isValidDate(date) ? date.toLocaleDateString('en-US', { 
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
-  })
-}
+  }) : '';
+};
 
-const isToday = (date) => {
-  if (!date || !(date instanceof Date) || isNaN(date.getTime())) return false
-  const today = new Date()
-  return date.getDate() === today.getDate() &&
-         date.getMonth() === today.getMonth() &&
-         date.getFullYear() === today.getFullYear()
-}
+// 日期字符串生成（保持不变）
+const getLocalDateStr = (date) => {
+  if (!isValidDate(date)) return '';
+  const d = new Date(date);
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0')
+  ].join('-');
+};
 
+// 判断日期是否有事件（保持不变）
 const hasEvent = (date) => {
-  if (!date || !(date instanceof Date) || isNaN(date.getTime())) return false
-  return eventsData.value.some(event => 
-    event.date.getDate() === date.getDate() &&
-    event.date.getMonth() === date.getMonth() &&
-    event.date.getFullYear() === date.getFullYear()
-  )
-}
+  if (!isValidDate(date)) return false;
+  const targetStr = getLocalDateStr(date);
+  return eventsData.value.some(event => getLocalDateStr(event.date) === targetStr);
+};
 
+// 获取指定日期的事件（保持不变）
+const getDayEvents = (date) => {
+  if (!isValidDate(date)) return [];
+  const targetStr = getLocalDateStr(date);
+  return eventsData.value.filter(event => getLocalDateStr(event.date) === targetStr);
+};
+
+// 判断是否为当天（保持不变）
+const isCurrentDay = (date) => {
+  if (!isValidDate(date)) return false;
+  const today = new Date();
+  return (
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  );
+};
+
+// 判断是否为当月（保持不变）
+const isSameMonth = (date) => {
+  if (!isValidDate(date)) return false;
+  return (
+    date.getFullYear() === currentYear.value &&
+    date.getMonth() === currentMonth.value
+  );
+};
+
+// 判断是否为选中日期（保持不变）
+const isSelectedDay = (date) => {
+  if (!isValidDate(date) || !isValidDate(currentDate.value)) return false;
+  return (
+    date.getFullYear() === currentDate.value.getFullYear() &&
+    date.getMonth() === currentDate.value.getMonth() &&
+    date.getDate() === currentDate.value.getDate()
+  );
+};
+
+// 文本截断（保持不变）
+const truncateText = (text, length) => {
+  return text.length > length ? text.substring(0, length) + '...' : text;
+};
+
+// 获取选中日期的事件（保持不变）
 const getSelectedDateEvents = () => {
-  if (!currentDate.value || !(currentDate.value instanceof Date) || isNaN(currentDate.value.getTime())) {
-    return []
-  }
-  return eventsData.value.filter(event => 
-    event.date.getDate() === currentDate.value.getDate() &&
-    event.date.getMonth() === currentDate.value.getMonth() &&
-    event.date.getFullYear() === currentDate.value.getFullYear()
-  )
-}
+  return isValidDate(currentDate.value) 
+    ? getDayEvents(currentDate.value) 
+    : [];
+};
 
+// 监听日期变化更新待办列表（保持不变）
 watch(currentDate, () => {
-  selectedDateEvents.value = getSelectedDateEvents()
-}, { deep: true })
+  selectedDateEvents.value = getSelectedDateEvents();
+}, { deep: true });
 
-const updateTodoStatus = (event) => {
-  const targetEvent = eventsData.value.find(item => 
-    item.name === event.name && item.description === event.description
-  )
-  if (targetEvent) targetEvent.completed = event.completed
-}
+// 日期点击事件（保持不变）
+const handleDateClick = (date) => {
+  if (!isSameMonth(date)) {
+    currentYear.value = date.getFullYear();
+    currentMonth.value = date.getMonth();
+    loadAllAssignments();
+  }
+  currentDate.value = new Date(date);
+};
+
+// 修改：更新作业状态（根据勾选状态切换完成/待处理）
+const updateTodoStatus = async (event) => {
+  const targetEvent = eventsData.value.find(item => item.assignmentId === event.assignmentId);
+  if (targetEvent) targetEvent.completed = event.completed;
+
+  if (event.assignmentId) {
+    // 根据勾选状态调用不同的API
+    const result = event.completed 
+      ? await markAssignmentComplete(event.assignmentId)  // 勾选：标记为完成
+      : await markAssignmentPending(event.assignmentId);  // 取消勾选：标记为待处理
+
+    if (!result.success) {
+      // 失败时回滚状态
+      if (targetEvent) targetEvent.completed = !event.completed;
+      ElMessage.error(result.error || '更新失败');
+    } else {
+      ElMessage.success(event.completed ? '已标记为完成' : '已恢复为待处理');
+    }
+  }
+};
 </script>
 
 <style scoped>
-/* 基础样式 */
+/* 样式保持不变 */
 .dashboard-page {
   display: flex;
   flex-direction: column;
@@ -550,38 +692,23 @@ const updateTodoStatus = (event) => {
 }
 
 .header-left { display: flex; align-items: center; }
-.el-button.kengu-btn {
+.kengu-btn {
   font-size: 20px;
   font-weight: bold;
-  color: #0a4a1f;
-  padding: 0;
-  margin: 0;
-}
-.el-button.kengu-btn:hover {
-  color: #00300f;
-  background-color: transparent;
+  color: #0a4a1f !important;
+  padding: 0 !important;
 }
 
 .header-nav {
   flex: 1;
-  display: flex;
-  justify-content: flex-start;
   margin-left: 40px;
 }
-
-.el-button.dashboard-btn {
-  font-size: 17px;
-  color: #333;
-}
-.el-button.dashboard-btn:hover {
-  color: #1f6937;
-}
+.dashboard-btn { font-size: 17px !important; }
 
 .header-right { display: flex; align-items: center; }
 .user-info { display: flex; align-items: center; cursor: pointer; }
 .user-icon { margin-right: 8px; font-size: 18px; }
 .user-name { font-size: 14px; margin-right: 5px; }
-.dropdown-icon { font-size: 16px; }
 
 /* 主体容器 */
 .dashboard-main {
@@ -593,9 +720,9 @@ const updateTodoStatus = (event) => {
   overflow: hidden;
 }
 
-/* 左侧日历样式 */
+/* 日历样式 */
 .calendar-container {
-  width: 33%;
+  width: 60%;
   min-width: 350px;
   display: flex;
   flex-direction: column;
@@ -615,52 +742,139 @@ const updateTodoStatus = (event) => {
   display: flex;
   flex-direction: column;
   padding: 0;
-  box-sizing: border-box;
   overflow: hidden;
-  border: 1px solid #ddd;
-  border-radius: 4px;
 }
 
 /* 日历头部 */
-:deep(.el-calendar__header) {
+.calendar-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 15px 20px;
+  padding: 12px 20px;
   border-bottom: 1px solid #eee;
+  background-color: #fff;
 }
-.month-title { font-size: 16px; font-weight: 600; color: #333; }
 
-/* 日历单元格 */
-:deep(.el-calendar-table td) { height: 60px; vertical-align: top; }
-.calendar-cell {
+.month-nav-btn {
+  color: #42b983;
+  border: none;
+  background: transparent;
+  margin-right: 15px;
+}
+
+.month-nav-btn:hover {
+  color: #31a266;
+}
+
+.title-group {
+  display: flex;
+  align-items: center;
+  flex-grow: 1;
+  justify-content: center;
+}
+
+.month-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: #333;
+}
+
+.today-btn {
+  margin-left: 10px;
+}
+
+/* 日历表格 */
+.calendar-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.calendar-week {
+  display: flex;
+  background-color: #f8f9fa;
+}
+
+.calendar-weekday {
+  width: 14.28%;
+  padding: 10px;
+  text-align: center;
+  font-weight: 600;
+  color: #495057;
+}
+
+.calendar-days {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.calendar-day {
+  width: 14.28%;
+  padding: 10px;
+  border: 1px solid #eee;
+  box-sizing: border-box;
+  min-height: 80px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  height: 100%;
-  padding-top: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
 }
-.current-day {
+
+.calendar-day:hover {
+  background-color: #f1f3f5;
+}
+
+.calendar-day.selected-day {
+  background-color: rgba(10, 74, 31, 0.1);
+  border: 2px solid #0a4a1f;
+}
+
+.calendar-day.other-month {
+  color: #ccc;
+  background-color: #f9f9f9;
+}
+
+.calendar-day.current-day .day-number {
   background-color: #0a4a1f;
   color: white;
-  width: 30px;
-  height: 30px;
   border-radius: 50%;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 500;
-}
-.event-dot {
-  width: 6px;
-  height: 6px;
-  background-color: #e34e4e;
-  border-radius: 50%;
-  margin-top: 4px;
+  font-size: 14px;
 }
 
-/* 中间To Do List */
+.day-number {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.day-events {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.event-item {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.event-icon {
+  color: #dc3545;
+  margin-right: 3px;
+  font-size: 10px;
+}
+
+/* 待办列表样式 */
 .todo-container {
   width: 33%;
   min-width: 300px;
@@ -669,16 +883,12 @@ const updateTodoStatus = (event) => {
 }
 .todo-card {
   flex: 1;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  padding: 20px;
-  box-sizing: border-box;
-  overflow: hidden;
-  border: 1px solid #ddd;
-  border-radius: 4px;
 }
 .todo-header { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
-.todo-list { max-height: calc(100% - 80px); overflow-y: auto; }
+.todo-list { flex: 1; overflow-y: auto; }
 .todo-item {
   display: flex;
   align-items: flex-start;
@@ -686,9 +896,8 @@ const updateTodoStatus = (event) => {
   padding: 10px 0;
   border-bottom: 1px solid #f5f5f5;
 }
-.todo-item:last-child { border-bottom: none; }
 .todo-name { font-weight: 500; font-size: 14px; margin-bottom: 3px; }
-.todo-desc { font-size: 13px; color: #666; }
+.todo-desc { font-size: 13px; color: #666; white-space: pre-line; }
 .completed { text-decoration: line-through; color: #999; }
 .no-todos {
   color: #666;
@@ -697,7 +906,7 @@ const updateTodoStatus = (event) => {
   font-size: 14px;
 }
 
-/* 右侧聊天区域（与Query页面完全一致） */
+/* 聊天区域样式 */
 .chat-container {
   width: 30%;
   min-width: 300px;
@@ -709,11 +918,9 @@ const updateTodoStatus = (event) => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  position: relative;
   height: 100%;
 }
 
-/* 回答区域 */
 .answer-container {
   flex: 1;
   overflow: hidden;
@@ -725,7 +932,6 @@ const updateTodoStatus = (event) => {
   height: 95%;
   overflow-y: auto;
   padding-bottom: 20px;
-  scroll-behavior: smooth;
 }
 .empty-answer {
   height: 100%;
@@ -758,35 +964,23 @@ const updateTodoStatus = (event) => {
   margin-bottom: 6px;
   display: flex;
   justify-content: space-between;
-  align-items: center;
 }
-.user-message .message-role { color: #fff; }
-.ai-message .message-role { color: #333; }
 .message-time {
   font-size: 12px;
   font-weight: normal;
   opacity: 0.7;
 }
-.message-content {
-  font-size: 15px;
-  white-space: pre-wrap;
-}
+.message-content { font-size: 15px; white-space: pre-wrap; }
 .typing-dot {
   animation: blink 1s infinite;
   margin-left: 4px;
 }
 @keyframes blink { 0%,100%{opacity:0}50%{opacity:1} }
 
-/* 参考来源 */
 .message-sources {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid #eee;
-}
-.message-sources h4 {
-  font-size: 14px;
-  margin-bottom: 8px;
-  color: #666;
 }
 .source-link {
   display: block;
@@ -795,16 +989,13 @@ const updateTodoStatus = (event) => {
   font-size: 13px;
 }
 
-/* 提问区域（与Query页面完全一致） */
 .fixed-input-container {
   position: sticky;
   bottom: 0;
   background-color: #fff;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
-  z-index: 10;
   padding: 15px 20px;
   border-top: 1px solid #eaecef;
-  box-sizing: border-box;
 }
 
 .reference-tags {
@@ -813,14 +1004,12 @@ const updateTodoStatus = (event) => {
   flex-wrap: wrap;
   gap: 8px;
 }
-.course-reference-tag { cursor: pointer; }
 
 .query-input {
   width: 100%;
   border-radius: 12px;
   border: 1px solid #ddd;
   padding: 12px 16px;
-  background-color: #fff;
   resize: vertical;
   font-size: 15px;
 }
@@ -836,25 +1025,11 @@ const updateTodoStatus = (event) => {
   justify-content: flex-end;
   gap: 10px;
 }
-.stop-btn { color: #f56c6c; }
-.stop-btn:hover { color: #e34e4e; background-color: transparent; }
-.clear-btn { color: #666; }
-.clear-btn:hover { color: #0a4a1f; background-color: transparent; }
+.stop-btn { color: #f56c6c !important; }
+.clear-btn { color: #666 !important; }
 .submit-btn {
-  padding: 8px 20px;
-  font-size: 14px;
-  border-radius: 8px;
-  background-color: #0a4a1f;
-  border-color: #0a4a1f;
-}
-.submit-btn:hover {
-  background-color: #073416;
-  border-color: #073416;
-}
-.submit-btn:disabled {
-  background-color: #9ca3af;
-  border-color: #9ca3af;
-  cursor: not-allowed;
+  background-color: #0a4a1f !important;
+  border-color: #0a4a1f !important;
 }
 
 /* 响应式调整 */

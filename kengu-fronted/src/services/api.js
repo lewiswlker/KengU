@@ -76,9 +76,36 @@ export const updateKnowledgeBase = (email, password, id) => {
   return api.post('/update-data', { email, password, id })
 }
 
+export const getUpdateProgress = (taskId) => {
+  return api.post('/update-status', { task_id: taskId })
+}
+
 export const getUserCourses = (email) => {
   return api.post('/user/courses', { email })
 }
+export const get_assignments_by_date_range = (start_date, end_date, user_id) => {
+  return api.post('/assignments/date-range', { start_date, end_date, user_id })
+}
+
+export const get_assignments_by_type = (start_date, end_date, user_id, assignment_type) => {
+  return api.post('/assignments/type', { start_date, end_date, user_id, assignment_type })
+}
+
+export const get_assignment_progress_stats = (user_id) => {
+  return api.post('/assignments/stats', { user_id })
+}
+
+export const get_upcoming_assignments = (user_id, days) => {
+  return api.post('/assignments/upcoming', { user_id, days })
+}
+export const mark_assignment_complete = (assignment_id) => {
+  return api.post('/assignments/mark-complete', { assignment_id })
+}
+
+export const mark_assignment_pending = (assignment_id) => {
+  return api.post('/assignments/mark-pending', { assignment_id })
+}
+
 
 export const askQuestion = (user_request, user_id, email, messages) => {
   return fetch('http://localhost:5000/api/chat/stream', {
@@ -108,5 +135,8 @@ export const logout = () => {
   router.push('/')
   ElMessage.success('Logged out successfully')
 }
-
+console.log('导出的函数:', {
+  mark_assignment_complete: typeof mark_assignment_complete,
+  mark_assignment_pending: typeof mark_assignment_pending
+});
 export default api

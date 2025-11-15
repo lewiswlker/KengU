@@ -20,9 +20,11 @@ app.add_middleware(
 from .api.auth_api import router as auth_router
 from .api.course_api import router as course_router
 from .api.chat_api import router as chat_router
+from .api.schedule_api import router as schedule_router
 app.include_router(auth_router, prefix="/api")
 app.include_router(course_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
+app.include_router(schedule_router, prefix="/api")
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,5 +1,19 @@
 <template>
   <div class="query-page">
+    <!-- 顶部进度条 -->
+    <el-progress
+      v-if="showProgress"
+      :percentage="progressPercent"
+      :status="progressStatus"
+      stroke-width="4"
+      style="position: fixed; top: 60px; left: 0; right: 0; z-index: 100; background: white; padding: 5px 20px;"
+    >
+      <template #default>
+        <span style="margin-right: 15px; font-size: 14px; font-weight: 500;">Loading course resources:</span>
+        <span style="margin-left: 10px; font-size: 14px;">{{ progressText }}</span>
+      </template>
+    </el-progress>
+
     <el-header class="hku-header">
       <div class="header-left">
         <el-button 
@@ -46,6 +60,7 @@
             size="small"
             @click="handleUpdateAllCourses"
             class="update-course-btn"
+            :loading="isUpdateLoading"
           >
             <el-icon v-if="isUpdateLoading" class="loading-icon"><Loading /></el-icon>
             <el-icon v-else><Refresh /></el-icon>
@@ -183,10 +198,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { updateKnowledgeBase } from '../services/api'
+import { updateKnowledgeBase, getUpdateProgress } from '../services/api'  // 新增进度查询接口
 import { User, ArrowDown, Search, Document, Refresh, Loading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
@@ -201,7 +216,18 @@ const chatHistory = ref([])
 const currentAiContent = ref('')
 const isUpdateLoading = ref(false)
 const abortController = ref(null)
-const selectedCourses = ref([])  // 存储选中的课程引用
+const selectedCourses = ref([])
+const updatePollInterval = ref(null)  // 用于存储进度轮询的计时器
+
+// 进度条相关状态
+const showProgress = ref(false)
+const progressPercent = ref(0)
+const progressText = ref('准备更新...')
+const progressStatus = computed(() => {
+  if (progressText.value.includes('失败')) return 'exception'
+  if (progressPercent.value === 100) return 'success'
+  return 'active'
+})
 
 // 用于获取消息 DOM 元素的 ref
 const messageRefs = ref([])
@@ -219,7 +245,6 @@ const scrollToLatest = async () => {
 
 // 添加课程引用
 const addCourseReference = (course) => {
-  // 避免重复添加
   const isAlreadySelected = selectedCourses.value.some(item => item.id === course.id)
   if (!isAlreadySelected) {
     selectedCourses.value.push(course)
@@ -231,7 +256,7 @@ const removeCourseReference = (courseId) => {
   selectedCourses.value = selectedCourses.value.filter(course => course.id !== courseId)
 }
 
-// 检查课程是否被选中（用于高亮显示）
+// 检查课程是否被选中
 const isCourseSelected = (courseId) => {
   return selectedCourses.value.some(course => course.id === courseId)
 }
@@ -242,25 +267,35 @@ const goToDashboard = () => router.push('/dashboard')
 const goToProfile = () => router.push('/profile')
 
 // 页面加载时初始化
-onMounted(() => {
-  if (!userStore.email) router.push('/')
-  if (userStore.courses.length === 0) userStore.loadCourses()
+onMounted(async () => {
+  if (!userStore.email) {
+    router.push('/')
+    return
+  }
+  if (userStore.courses.length === 0) {
+    await userStore.loadCourses()
+  }
+  // 自动触发更新
+  handleUpdateAllCourses()
 })
 
-// 组件卸载时中断请求
+// 组件卸载时清理
 onUnmounted(() => {
   if (abortController.value) {
     abortController.value.abort()
   }
+  if (updatePollInterval.value) {
+    clearInterval(updatePollInterval.value)
+  }
 })
 
-// 清空输入框（同时清空选中的引用）
+// 清空输入框
 const clearInput = () => {
   question.value = ''
   selectedCourses.value = []
 }
 
-// 格式化消息内容（支持换行）
+// 格式化消息内容
 const formatMessage = (content) => {
   return content.replace(/\n/g, '<br/>')
 }
@@ -268,11 +303,9 @@ const formatMessage = (content) => {
 // 终止AI回答生成
 const stopGeneration = () => {
   if (abortController.value) {
-    // 中断流式响应
     abortController.value.abort()
     console.log('已手动终止回答')
     
-    // 保存已生成的内容
     if (currentAiContent.value.trim()) {
       chatHistory.value.push({
         role: 'assistant',
@@ -282,7 +315,6 @@ const stopGeneration = () => {
       })
     }
     
-    // 重置状态
     isGenerating.value = false
     currentAiContent.value = ''
     scrollToLatest()
@@ -308,9 +340,8 @@ const fetchAskQuestion = (user_request, user_id, email, messages) => {
   })
 }
 
-// 提交问题（整合课程引用）
+// 提交问题
 const submitQuestion = async () => {
-  // 处理课程引用：拼接课程信息到问题中
   let finalQuestion = question.value.trim()
   if (selectedCourses.value.length > 0) {
     const courseNames = selectedCourses.value.map(course => course.name).join('、')
@@ -319,7 +350,6 @@ const submitQuestion = async () => {
 
   if (!finalQuestion) return
 
-  // 1. 构建当前用户消息并添加到聊天历史
   const userMsg = {
     role: 'user',
     content: finalQuestion,
@@ -327,21 +357,18 @@ const submitQuestion = async () => {
   }
   chatHistory.value.push(userMsg)
   question.value = ''
-  selectedCourses.value = []  // 提交后清空选中的课程
+  selectedCourses.value = []
   isGenerating.value = true
   currentAiContent.value = ''
 
-  // 2. 构建聊天历史参数
   const messagesParams = chatHistory.value.map(msg => ({
     role: msg.role,
     content: msg.content
   }))
 
   try {
-    // 3. 初始化中断控制器
     abortController.value = new AbortController()
 
-    // 4. 调用 fetch 接口
     const response = await fetchAskQuestion(
       finalQuestion,
       userStore.id,
@@ -349,7 +376,6 @@ const submitQuestion = async () => {
       messagesParams
     )
 
-    // 5. 验证响应有效性
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
@@ -357,7 +383,6 @@ const submitQuestion = async () => {
       throw new Error('后端未返回有效的流式响应')
     }
 
-    // 6. 处理原生流式响应
     const reader = response.body.getReader()
     const decoder = new TextDecoder('utf-8')
     let buffer = ''
@@ -376,7 +401,7 @@ const submitQuestion = async () => {
             const { chunk } = JSON.parse(dataStr)
             currentAiContent.value += chunk
             await nextTick()
-            scrollToLatest() // 流式输出时滚动
+            scrollToLatest()
           } catch (e) {
             console.error('解析流式数据失败：', e)
           }
@@ -385,7 +410,6 @@ const submitQuestion = async () => {
       buffer = lines[lines.length - 1] || ''
     }
 
-    // 7. 生成完成，添加 AI 回答到聊天历史
     isGenerating.value = false
     if (currentAiContent.value) {
       chatHistory.value.push({
@@ -396,12 +420,11 @@ const submitQuestion = async () => {
       })
       currentAiContent.value = ''
       await nextTick()
-      scrollToLatest() // 最终滚动
+      scrollToLatest()
     }
 
   } catch (error) {
     isGenerating.value = false
-    // 忽略手动终止的错误
     if (error.name !== 'AbortError') {
       console.error('提问失败', error)
       ElMessage.error('查询失败，请重试')
@@ -418,12 +441,15 @@ const handleLogout = () => {
     if (abortController.value) {
       abortController.value.abort()
     }
+    if (updatePollInterval.value) {
+      clearInterval(updatePollInterval.value)
+    }
     userStore.logout()
     router.push('/')
   }
 }
 
-// 更新课程
+// 更新课程（带进度条）
 const handleUpdateAllCourses = async () => {
   if (!userStore.email || !userStore.password) {
     ElMessage.warning('请先登录')
@@ -433,32 +459,79 @@ const handleUpdateAllCourses = async () => {
 
   if (isUpdateLoading.value) return
 
+  // 初始化进度条
+  showProgress.value = true
+  progressPercent.value = 0
+  progressText.value = '正在启动更新任务...'
   isUpdateLoading.value = true
+
   try {
-    const res = await updateKnowledgeBase(userStore.email, userStore.password, userStore.id)
-    if (res.success) {
-      await userStore.loadCourses()
-      const moodleCount = res.moodle?.files_downloaded || 0
-      const exambaseCount = res.exambase?.files_downloaded || 0
-      ElMessage({
-        message: `更新成功！\nMoodle：${moodleCount} 个文件\nExambase：${exambaseCount} 个文件`,
-        type: 'success',
-        duration: 5000,
-      })
-    } else {
-      ElMessage({
-        message: res.error || '更新失败，请重试',
-        type: 'error',
-        duration: 5000,
-      })
+    // 1. 启动更新任务，获取task_id
+    const startRes = await updateKnowledgeBase(
+      userStore.email, 
+      userStore.password, 
+      userStore.id
+    )
+
+    if (!startRes.success || !startRes.task_id) {
+      throw new Error(startRes.error || '启动更新任务失败')
     }
+    const taskId = startRes.task_id
+
+    // 2. 清除可能存在的旧计时器
+    if (updatePollInterval.value) {
+      clearInterval(updatePollInterval.value)
+    }
+
+    // 3. 轮询获取进度（每1秒一次）
+    updatePollInterval.value = setInterval(async () => {
+      try {
+        const progressRes = await getUpdateProgress(taskId)
+        
+        if (progressRes.completed) {
+          // 更新完成
+          clearInterval(updatePollInterval.value)
+          progressPercent.value = 100
+          progressText.value = '更新完成！'
+          await userStore.loadCourses()
+          
+          // 2秒后隐藏进度条
+          setTimeout(() => {
+            showProgress.value = false
+          }, 2000)
+        } else if (progressRes.failed) {
+          // 更新失败
+          clearInterval(updatePollInterval.value)
+          progressText.value = `Updating Falied:${progressRes.error || 'Unknown'}`
+          ElMessage.error(progressRes.error || '更新过程中发生错误')
+          
+          // 3秒后隐藏进度条
+          setTimeout(() => {
+            showProgress.value = false
+          }, 3000)
+        } else {
+          // 更新中
+          progressPercent.value = progressRes.percent || 0
+          progressText.value = progressRes.status || `正在更新（${progressRes.percent || 0}%）`
+        }
+      } catch (e) {
+        clearInterval(updatePollInterval.value)
+        progressText.value = `查询进度失败：${e.message}`
+        setTimeout(() => {
+          showProgress.value = false
+        }, 3000)
+      }
+    }, 1000)
+
   } catch (error) {
     console.error('更新课程失败', error)
-    ElMessage({
-      message: error.message || '网络异常，请重试',
-      type: 'error',
-      duration: 5000,
-    })
+    progressText.value = `启动失败：${error.message}`
+    ElMessage.error(error.message || '网络异常，请重试')
+    
+    // 3秒后隐藏进度条
+    setTimeout(() => {
+      showProgress.value = false
+    }, 3000)
   } finally {
     isUpdateLoading.value = false
   }
@@ -828,5 +901,10 @@ const handleUpdateAllCourses = async () => {
   background-color: #9ca3af;
   border-color: #9ca3af;
   cursor: not-allowed;
+}
+
+::v-deep .el-progress-bar__inner {
+  transition: width 0.3s ease;
+  background-color: #0a4a1f;
 }
 </style>
