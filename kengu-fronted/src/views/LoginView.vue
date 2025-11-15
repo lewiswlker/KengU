@@ -58,7 +58,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { verifyHkuAuth, checkAndCreateUser} from '../services/api'
+import { verifyHkuAuth } from '../services/api'
 import { Book, User, Lock } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
@@ -93,16 +93,12 @@ const handleLogin = async () => {
   isLoading.value = true
   try {
     const authResult = await verifyHkuAuth(loginForm.email, loginForm.password)
+    
     if (!authResult.success) {
       return ElMessage.error(`Authentication failed: ${authResult.message || 'Invalid email or password'}`)
     }
 
-    const userResult = await checkAndCreateUser(loginForm.email)
-    if (!userResult.success) {
-      return ElMessage.error(`User registration failed: ${userResult.message || 'Please try again'}`)
-    }
-
-    const userId = userResult.data?.id
+    const userId = authResult.data?.id
     if (!userId) {
       return ElMessage.error('Failed to get user information')
     }
