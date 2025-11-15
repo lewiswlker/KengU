@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from typing import Dict, List, Tuple
+from urllib.parse import urlparse, unquote
+import os
 
 from .embedder import Embedder
 from .vector_store import ChromaVectorStore
@@ -28,11 +30,22 @@ class Retriever:
         # convert to output
         results: List[Dict] = []
         for chunk, dist in all_hits[:top_k]:
+            # Resolve URL and file extension
+            url = chunk.get("url")
+            try:
+                path = unquote(urlparse(url).path or "")
+                _, ext = os.path.splitext(path)
+                ext = (ext or "").lower()
+            except Exception:
+                ext = ""
+            title = chunk.get("title", "") or ""
+            if ext and not title.lower().endswith(ext):
+                title = f"{title}{ext}"
             results.append(
                 {
                     "text": chunk["content_with_weight"],
-                    "url": chunk.get("hosted_url") or chunk.get("url") or "http://127.0.0.1:8009/mock",
-                    "title": chunk.get("title", ""),
+                    "url": url,
+                    "title": title,
                     "course_id": chunk.get("course_id"),
                     "score": float(dist),              # 距离
                     "relevance": 1.0 / (1.0 + float(dist)),  # 相关性映射到 (0,1]
