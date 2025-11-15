@@ -58,6 +58,8 @@ class ChatAgent:
 
         # Collect agent tasks
         agent_tasks = []
+        rag_retrieval_results = None  # Store RAG retrieval results
+        
         for agent_type in agent_types:
             if agent_type == AgentType.SCRAPER:
                 agent_tasks.append(
@@ -81,6 +83,12 @@ class ChatAgent:
                         # Handle exceptions from agent tasks
                         yield f"Agent {agent_types[i]} 执行失败: {str(result)}\n"
                     elif result is not None:
+                        # Extract RAG retrieval results if this is RAG agent
+                        if agent_types[i] == AgentType.RAG and isinstance(result, dict):
+                            rag_data = result.get('data', {})
+                            if rag_data.get('retrieval_results'):
+                                rag_retrieval_results = rag_data['retrieval_results']
+                        
                         # Add successful agent results to context
                         if isinstance(result, dict):
                             # Structured result
@@ -101,6 +109,13 @@ class ChatAgent:
             except Exception as e:
                 yield f"执行代理任务时出错: {str(e)}"
                 return
+        
+        # Send retrieval results first (before LLM response)
+        if rag_retrieval_results:
+            import json
+            from dataclasses import asdict
+            sources = [asdict(result) for result in rag_retrieval_results]
+            yield f"__SOURCES__:{json.dumps(sources, ensure_ascii=False)}__END_SOURCES__"
 
         # Generate response using LLM with all context
         messages.append({"role": "user", "content": user_request})
