@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant PlannerAgent
+    participant DB
+    participant StudyDB as StudySessionDB
+    participant LLM
+    participant ConvStore as ConvStore
+    participant User
+
+    PlannerAgent->>DB: get_assignments_by_date_range(user_id, start_date, end_date)
+    DB-->>PlannerAgent: assignments
+    PlannerAgent->>StudyDB: get_study_sessions_by_date_range(user_id, start_date, end_date)
+    StudyDB-->>PlannerAgent: study_sessions
+    PlannerAgent->>LLM: call_llm(plan_sys, plan_user_with_assignments_and_sessions)
+    alt LLM success
+        LLM-->>PlannerAgent: plan_text (Gantt-like + schedule)
+        PlannerAgent->>ConvStore: _append_conversation(user_id,'assistant', plan_text)
+        PlannerAgent-->>User: ChatResult(plan_text)
+    else LLM fails
+        PlannerAgent->>ConvStore: _append_conversation(user_id,'assistant', fallback_reply)
+        PlannerAgent-->>User: ChatResult(fallback_reply)
+    end
+

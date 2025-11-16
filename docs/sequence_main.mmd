@@ -1,0 +1,24 @@
+sequenceDiagram
+    participant User
+    participant PlannerAgent
+    participant ConvStore as ConvStore
+    participant DB
+    participant LLM
+
+    User->>PlannerAgent: chat(chat_input) / action(action_input) / schedule(schedule_input)
+    PlannerAgent->>ConvStore: _append_conversation(user_id, role, content)
+
+    alt Intent parsing (see `docs/alt_intent_parsing.mmd`)
+        PlannerAgent->>LLM: call_llm(system_prompt, user_prompt)
+        LLM-->>PlannerAgent: JSON action or text reply
+    end
+
+    alt Schedule request (see `docs/alt_schedule_request.mmd`)
+        PlannerAgent->>DB: get_assignments_by_date_range(user_id, start, end)
+        PlannerAgent->>DB: get_study_sessions_by_date_range(user_id, start, end)
+        PlannerAgent->>LLM: call_llm(system_prompt, user_prompt)
+    end
+
+    %% Auxiliary reads
+    PlannerAgent->>DB: get_learning_profile(user_id) / get_course_meta(course_id)
+

@@ -1,0 +1,24 @@
+sequenceDiagram
+    participant PlannerAgent
+    participant DB
+    participant ConvStore as ConvStore
+    participant User
+
+    PlannerAgent->>DB: get_pending_by_user(user_id)
+    DB-->>PlannerAgent: pending_list
+    alt matched assignment
+        PlannerAgent->>DB: mark_complete_by_id(assignment_id)
+        DB-->>PlannerAgent: success/fail
+        PlannerAgent->>ConvStore: _append_conversation(user_id,'assistant', reply)
+        PlannerAgent-->>User: ChatResult(reply)
+    else not found
+        PlannerAgent->>DB: get_assignments_by_date_range(user_id, start, end)
+        DB-->>PlannerAgent: all_assignments
+        alt found completed entry
+            PlannerAgent-->>User: ChatResult("already completed")
+        else
+            PlannerAgent->>ConvStore: _append_conversation(user_id,'assistant', "未找到该作业，是否要添加为新任务？")
+            PlannerAgent-->>User: ChatResult("未找到该作业，是否要添加为新任务？")
+        end
+    end
+

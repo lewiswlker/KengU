@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant PlannerAgent
+    participant DB
+    participant StudyDB as StudySessionDB
+    participant LLM
+    participant ConvStore as ConvStore
+    participant User
+
+    PlannerAgent->>DB: get_pending_by_user(user_id)
+    DB-->>PlannerAgent: pending_list
+    alt no pending
+        PlannerAgent->>ConvStore: _append_conversation(user_id,'assistant', "没有未完成的作业。")
+        PlannerAgent-->>User: ChatResult("没有未完成的作业。")
+    else has pending
+        PlannerAgent->>StudyDB: get_study_session_stats(user_id, days=30)
+        StudyDB-->>PlannerAgent: stats
+        PlannerAgent->>LLM: call_llm(brief_sys, brief_user_with_pending_and_stats)
+        LLM-->>PlannerAgent: suggestion_text
+        PlannerAgent->>ConvStore: _append_conversation(user_id,'assistant', reply_with_list_and_suggestion)
+        PlannerAgent-->>User: ChatResult(list + suggestion)
+    end
+

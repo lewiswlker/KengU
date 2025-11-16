@@ -1,0 +1,23 @@
+sequenceDiagram
+    participant User
+    participant PlannerAgent
+    participant DB
+    participant LLM
+    participant ConvStore as ConvStore
+
+    User->>PlannerAgent: schedule(schedule_input: ScheduleInput)
+    PlannerAgent->>DB: get_assignments_by_date_range(user_id, start_date, end_date)
+    DB-->>PlannerAgent: assignments
+    PlannerAgent->>DB: get_study_sessions_by_date_range(user_id, start_date, end_date)
+    DB-->>PlannerAgent: study_sessions
+    PlannerAgent->>PlannerAgent: _generate_intelligent_plan(tasks, relevant_data, user_id)
+    PlannerAgent->>LLM: call_llm(plan_system, plan_user)
+    alt LLM success
+        LLM-->>PlannerAgent: ai_recommendation
+        PlannerAgent->>PlannerAgent: _create_ai_schedule_response(ai_plan, relevant_data, tasks)
+        PlannerAgent-->>User: ScheduleResult(schedule)
+    else LLM fails
+        PlannerAgent->>PlannerAgent: _create_rule_based_schedule(relevant_data, tasks)
+        PlannerAgent-->>User: ScheduleResult(fallback)
+    end
+

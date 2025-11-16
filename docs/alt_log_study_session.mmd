@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant PlannerAgent
+    participant DB
+    participant StudyDB as StudySessionDB
+    participant ConvStore as ConvStore
+    participant User
+
+    PlannerAgent->>DB: get_pending_by_user(user_id)
+    DB-->>PlannerAgent: pending_list
+    alt matched assignment
+        PlannerAgent->>StudyDB: add_study_session(assignment_id, start_time, duration_minutes, notes)
+        StudyDB-->>PlannerAgent: session_id
+        PlannerAgent->>ConvStore: _append_conversation(user_id,'assistant', reply)
+        PlannerAgent-->>User: ChatResult(reply)
+    else not found
+        PlannerAgent->>ConvStore: _append_conversation(user_id,'assistant', reply)
+        PlannerAgent-->>User: ChatResult(reply)
+    end
+

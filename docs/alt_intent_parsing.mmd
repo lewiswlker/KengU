@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant PlannerAgent
+    participant LLM
+    participant ConvStore as ConvStore
+    participant DB
+
+    PlannerAgent->>LLM: call_llm(system_prompt, user_prompt)
+    alt LLM returns JSON action
+        LLM-->>PlannerAgent: JSON{action: ...}
+        PlannerAgent->>ConvStore: _append_conversation(user_id, 'assistant', reply)
+        alt action == mark_complete (see `docs/alt_mark_complete.mmd`)
+            note right of PlannerAgent: handled by `alt_mark_complete.mmd`
+        end
+        alt action == log_study_session (see `docs/alt_log_study_session.mmd`)
+            note right of PlannerAgent: handled by `alt_log_study_session.mmd`
+        end
+        alt action == list_pending (see `docs/alt_list_pending.mmd`)
+            note right of PlannerAgent: handled by `alt_list_pending.mmd`
+        end
+        alt action == generate_monthly_plan (see `docs/alt_generate_monthly_plan.mmd`)
+            note right of PlannerAgent: handled by `alt_generate_monthly_plan.mmd`
+        end
+        alt other actions
+            PlannerAgent-->>DB: update/query as needed
+            PlannerAgent-->>User: ChatResult(reply)
+        end
+    else LLM returns plain text
+        LLM-->>PlannerAgent: text reply
+        PlannerAgent-->>User: ChatResult(text reply)
+    end
+
