@@ -241,7 +241,7 @@ async def mark_assignment_pending(request: MarkCompleteRequest):
             print(f"当前连接类型：{type(conn)}")  # 应显示数据库连接类型
 
             # 执行 DAO 操作
-            updated, rowcount, last_executed = assignment_dao.mark_pending(conn, request.assignment_id)
+            updated, rowcount, last_executed = assignment_dao.mark_incomplete_by_id(conn, request.assignment_id)
             conn.commit()
             logger.info(f"作业标记完成成功：assignment_id={request.assignment_id}, 影响行数={rowcount}")
             return {"success": True, "message": "作业已标记为完成"}

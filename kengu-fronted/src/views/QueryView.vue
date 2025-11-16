@@ -21,6 +21,11 @@
           @click="goToQuery"
           class="kengu-btn"
         >
+        <img 
+          src="../assets/logo.png"
+          alt="KengU Logo" 
+          class="kengu-logo"
+        >
           KengU
         </el-button>
       </div>
@@ -103,11 +108,52 @@
                   {{ msg.role === 'user' ? 'You' : 'KengU Assistant' }}
                   <span class="message-time">{{ msg.time }}</span>
                 </div>
+                
+                <!-- RAG参考文本区域（优化版） -->
+                <div v-if="msg.role === 'assistant' && msg.ragTexts && msg.ragTexts.length" class="rag-container">
+                  <!-- 折叠/展开按钮 -->
+                  <div 
+                    class="rag-toggle" 
+                    :class="{ 'expanded': isRagExpanded(index) }"
+                    @click="toggleRagExpand(index)"
+                  >
+                    <span>
+                      <el-icon class="thought-icon"><Search /></el-icon>
+                      Reference texts ({{ msg.ragTexts.length }})
+                    </span>
+                    <el-icon class="rag-toggle-icon"><ArrowDown /></el-icon>
+                  </div>
+                  
+                  <!-- 参考文本内容（展开时显示） -->
+                  <div 
+                    class="rag-content" 
+                    v-show="isRagExpanded(index)"
+                  >
+                    <div class="rag-content-header">
+                      <el-icon class="thought-icon"><Search /></el-icon>
+                      Detailed reference texts
+                    </div>
+                    <div 
+                      v-for="(text, idx) in msg.ragTexts" 
+                      :key="idx" 
+                      class="rag-item"
+                      :data-index="idx + 1"
+                    >
+                      {{ text }}
+                      <!-- 相关性分数标签 -->
+                      <span v-if="msg.sources[idx]?.relevance" class="rag-relevance">
+                        {{ (msg.sources[idx].relevance * 100).toFixed(0) }}% match
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- AI 回答内容 -->
                 <div class="message-content" v-html="formatMessage(msg.content)"></div>
                 
-                <!-- AI 回答的参考来源 -->
+                <!-- 参考来源链接 -->
                 <div v-if="msg.role === 'assistant' && msg.sources?.length" class="message-sources">
-                  <h4>参考来源：</h4>
+                  <h4>References:</h4>
                   <el-link
                     v-for="(source, idx) in msg.sources"
                     :key="idx"
@@ -135,9 +181,8 @@
           </el-scrollbar>
         </div>
 
-        <!-- 右下角固定提问区域（包含终止按钮） -->
+        <!-- 右下角固定提问区域 -->
         <div class="fixed-input-container">
-          <!-- 课程引用标签区域 -->
           <div class="reference-tags" v-if="selectedCourses.length > 0">
             <el-tag 
               v-for="course in selectedCourses" 
@@ -161,7 +206,6 @@
           ></textarea>
           
           <div class="query-actions">
-            <!-- 生成中显示终止按钮，否则显示清空按钮 -->
             <el-button 
               v-if="isGenerating"
               type="text" 
@@ -201,9 +245,9 @@
 import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { updateKnowledgeBase, getUpdateProgress } from '../services/api'  // 新增进度查询接口
+import { updateKnowledgeBase, getUpdateProgress } from '../services/api'
 import { User, ArrowDown, Search, Document, Refresh, Loading } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessageBox, ElMessage } from 'element-plus'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -217,23 +261,40 @@ const currentAiContent = ref('')
 const isUpdateLoading = ref(false)
 const abortController = ref(null)
 const selectedCourses = ref([])
-const updatePollInterval = ref(null)  // 用于存储进度轮询的计时器
+const updatePollInterval = ref(null)
+
+// 折叠状态管理（存储当前展开的面板索引）
+const activeRagCollapse = ref('')
 
 // 进度条相关状态
 const showProgress = ref(false)
 const progressPercent = ref(0)
-const progressText = ref('准备更新...')
+const progressText = ref('Ready to update...')
 const progressStatus = computed(() => {
-  if (progressText.value.includes('失败')) return 'exception'
+  if (progressText.value.includes('Fail')) return 'exception'
   if (progressPercent.value === 100) return 'success'
   return 'active'
 })
 
-// 用于获取消息 DOM 元素的 ref
+// DOM引用
 const messageRefs = ref([])
 const typingRef = ref(null)
 
-// 滚动到最新消息的方法
+// 判断指定索引的RAG面板是否展开
+const isRagExpanded = (index) => {
+  return activeRagCollapse.value === `rag-${index}`
+}
+
+// 切换RAG面板展开/折叠状态
+const toggleRagExpand = (index) => {
+  if (isRagExpanded(index)) {
+    activeRagCollapse.value = ''  // 收起
+  } else {
+    activeRagCollapse.value = `rag-${index}`  // 展开
+  }
+}
+
+// 滚动到最新消息
 const scrollToLatest = async () => {
   await nextTick()
   if (isGenerating.value && typingRef.value) {
@@ -243,7 +304,7 @@ const scrollToLatest = async () => {
   }
 }
 
-// 添加课程引用
+// 课程引用相关方法
 const addCourseReference = (course) => {
   const isAlreadySelected = selectedCourses.value.some(item => item.id === course.id)
   if (!isAlreadySelected) {
@@ -251,12 +312,10 @@ const addCourseReference = (course) => {
   }
 }
 
-// 移除课程引用
 const removeCourseReference = (courseId) => {
   selectedCourses.value = selectedCourses.value.filter(course => course.id !== courseId)
 }
 
-// 检查课程是否被选中
 const isCourseSelected = (courseId) => {
   return selectedCourses.value.some(course => course.id === courseId)
 }
@@ -266,7 +325,7 @@ const goToQuery = () => router.push('/query')
 const goToDashboard = () => router.push('/dashboard')
 const goToProfile = () => router.push('/profile')
 
-// 页面加载时初始化
+// 页面初始化
 onMounted(async () => {
   if (!userStore.email) {
     router.push('/')
@@ -275,56 +334,63 @@ onMounted(async () => {
   if (userStore.courses.length === 0) {
     await userStore.loadCourses()
   }
-  // 自动触发更新
   handleUpdateAllCourses()
 })
 
-// 组件卸载时清理
+// 组件卸载清理
 onUnmounted(() => {
-  if (abortController.value) {
-    abortController.value.abort()
-  }
-  if (updatePollInterval.value) {
-    clearInterval(updatePollInterval.value)
-  }
+  if (abortController.value) abortController.value.abort()
+  if (updatePollInterval.value) clearInterval(updatePollInterval.value)
 })
 
-// 清空输入框
+// 清空输入
 const clearInput = () => {
   question.value = ''
   selectedCourses.value = []
 }
 
-// 格式化消息内容
+// 格式化消息
 const formatMessage = (content) => {
   return content.replace(/\n/g, '<br/>')
 }
 
-// 终止AI回答生成
+// 终止生成
 const stopGeneration = () => {
   if (abortController.value) {
     abortController.value.abort()
-    console.log('已手动终止回答')
+    console.log('Answer manually terminated')
     
-    if (currentAiContent.value.trim()) {
+    let finalContent = currentAiContent.value
+    const currentRagTexts = []
+    if (window.currentRetrievalSources?.length) {
+      currentRagTexts.push(...window.currentRetrievalSources.map(s => s.text))
+    }
+    
+    if (finalContent.trim()) {
       chatHistory.value.push({
         role: 'assistant',
-        content: currentAiContent.value,
+        content: finalContent,
         time: new Date().toLocaleString(),
-        sources: []
+        sources: window.currentRetrievalSources || [],
+        ragTexts: currentRagTexts
       })
     }
     
     isGenerating.value = false
     currentAiContent.value = ''
+    window.currentRetrievalSources = []
     scrollToLatest()
-    ElMessage.info('已终止回答生成')
+    ElMessage.info('Answer generation terminated')
   }
 }
 
-// 自定义 fetch 版本的 askQuestion
+// 请求接口
 const fetchAskQuestion = (user_request, user_id, email, messages) => {
-  return fetch('http://localhost:5000/api/chat/stream', {
+  const backendURL = window.location.hostname.includes('natapp')
+    ? 'http://kengu-api.natapp1.cc/api/chat/stream'
+    : 'http://localhost:8009/api/chat/stream'
+  
+  return fetch(backendURL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -345,11 +411,13 @@ const fetchAskQuestion = (user_request, user_id, email, messages) => {
 const submitQuestion = async () => {
   let finalQuestion = question.value.trim()
   if (selectedCourses.value.length > 0) {
-    const courseNames = selectedCourses.value.map(course => course.name).join('、')
-    finalQuestion = `[课程: ${courseNames}] ${finalQuestion}`
+    const courseNames = selectedCourses.value.map(c => c.name).join('、')
+    finalQuestion = `[Courses: ${courseNames}] ${finalQuestion}`
   }
 
   if (!finalQuestion) return
+
+  window.currentRetrievalSources = []
 
   const userMsg = {
     role: 'user',
@@ -369,7 +437,6 @@ const submitQuestion = async () => {
 
   try {
     abortController.value = new AbortController()
-
     const response = await fetchAskQuestion(
       finalQuestion,
       userStore.id,
@@ -377,18 +444,15 @@ const submitQuestion = async () => {
       messagesParams
     )
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     if (!response.body || typeof response.body.getReader !== 'function') {
-      throw new Error('后端未返回有效的流式响应')
+      throw new Error('The backend did not return a valid streaming response')
     }
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder('utf-8')
     let buffer = ''
     let isStreaming = true
-    let retrievalSources = []  // 存储检索到的来源
 
     while (isStreaming) {
       const { done, value } = await reader.read()
@@ -402,30 +466,26 @@ const submitQuestion = async () => {
             const dataStr = line.slice(6)
             const { chunk } = JSON.parse(dataStr)
             
-            // 检查是否是来源数据
             if (chunk.startsWith('__SOURCES__:') && chunk.includes('__END_SOURCES__')) {
               const sourcesJson = chunk.replace('__SOURCES__:', '').replace('__END_SOURCES__', '')
               try {
                 const sources = JSON.parse(sourcesJson)
-                // 转换为前端需要的格式
-                retrievalSources = sources.map(s => ({
-                  name: s.title || '未命名来源',
+                window.currentRetrievalSources = sources.map(s => ({
+                  name: s.title || 'Unknown sources',
                   url: s.source_url || '#',
                   relevance: s.relevance_score || 0,
                   text: s.text || ''
                 }))
-                console.log('接收到检索来源：', retrievalSources)
               } catch (e) {
-                console.error('解析来源数据失败：', e)
+                console.error('Failed to parse source data:', e)
               }
             } else {
-              // 正常的文本内容
               currentAiContent.value += chunk
               await nextTick()
               scrollToLatest()
             }
           } catch (e) {
-            console.error('解析流式数据失败：', e)
+            console.error('Failed to parse streaming data:', e)
           }
         }
       }
@@ -434,13 +494,18 @@ const submitQuestion = async () => {
 
     isGenerating.value = false
     if (currentAiContent.value) {
+      const ragTexts = window.currentRetrievalSources.map(s => s.text).filter(Boolean)
+      
       chatHistory.value.push({
         role: 'assistant',
         content: currentAiContent.value,
         time: new Date().toLocaleString(),
-        sources: retrievalSources  // 使用检索到的来源
+        sources: window.currentRetrievalSources || [],
+        ragTexts: ragTexts
       })
+      
       currentAiContent.value = ''
+      window.currentRetrievalSources = []
       await nextTick()
       scrollToLatest()
     }
@@ -448,10 +513,11 @@ const submitQuestion = async () => {
   } catch (error) {
     isGenerating.value = false
     if (error.name !== 'AbortError') {
-      console.error('提问失败', error)
-      ElMessage.error('查询失败，请重试')
+      console.error('Failed to submit the question', error)
+      ElMessage.error('Query failed. Please try again!')
       chatHistory.value.pop()
     }
+    window.currentRetrievalSources = []
   } finally {
     abortController.value = null
   }
@@ -459,36 +525,41 @@ const submitQuestion = async () => {
 
 // 退出登录
 const handleLogout = () => {
-  if (confirm('确定要退出登录吗？')) {
-    if (abortController.value) {
-      abortController.value.abort()
+  ElMessageBox.confirm(
+    'Are you sure to logout?', 
+    'Confirmation', 
+    {
+      confirmButtonText: 'Yes',
+      cancelButtonText: 'Cancel',
+      type: 'warning',
+      customClass: 'custom-logout-box'
     }
-    if (updatePollInterval.value) {
-      clearInterval(updatePollInterval.value)
-    }
-    userStore.logout()
-    router.push('/')
-  }
+  )
+  .then(() => {
+    userStore.logout();
+    router.push('/');
+  })
+  .catch(() => {
+    // 取消退出逻辑
+  });
 }
 
-// 更新课程（带进度条）
+// 更新课程
 const handleUpdateAllCourses = async () => {
   if (!userStore.email || !userStore.password) {
-    ElMessage.warning('请先登录')
+    ElMessage.warning('Please login first')
     router.push('/')
     return
   }
 
   if (isUpdateLoading.value) return
 
-  // 初始化进度条
   showProgress.value = true
   progressPercent.value = 0
-  progressText.value = '正在启动更新任务...'
+  progressText.value = 'Starting the update task...'
   isUpdateLoading.value = true
 
   try {
-    // 1. 启动更新任务，获取task_id
     const startRes = await updateKnowledgeBase(
       userStore.email, 
       userStore.password, 
@@ -496,64 +567,43 @@ const handleUpdateAllCourses = async () => {
     )
 
     if (!startRes.success || !startRes.task_id) {
-      throw new Error(startRes.error || '启动更新任务失败')
+      throw new Error(startRes.error || 'Failed to start the update task')
     }
     const taskId = startRes.task_id
 
-    // 2. 清除可能存在的旧计时器
-    if (updatePollInterval.value) {
-      clearInterval(updatePollInterval.value)
-    }
+    if (updatePollInterval.value) clearInterval(updatePollInterval.value)
 
-    // 3. 轮询获取进度（每1秒一次）
     updatePollInterval.value = setInterval(async () => {
       try {
         const progressRes = await getUpdateProgress(taskId)
         
         if (progressRes.completed) {
-          // 更新完成
           clearInterval(updatePollInterval.value)
           progressPercent.value = 100
-          progressText.value = '更新完成！'
+          progressText.value = 'Update completed!'
           await userStore.loadCourses()
-          
-          // 2秒后隐藏进度条
-          setTimeout(() => {
-            showProgress.value = false
-          }, 2000)
+          setTimeout(() => showProgress.value = false, 2000)
         } else if (progressRes.failed) {
-          // 更新失败
           clearInterval(updatePollInterval.value)
           progressText.value = `Updating Falied:${progressRes.error || 'Unknown'}`
-          ElMessage.error(progressRes.error || '更新过程中发生错误')
-          
-          // 3秒后隐藏进度条
-          setTimeout(() => {
-            showProgress.value = false
-          }, 3000)
+          ElMessage.error(progressRes.error || 'An error occurred during the update')
+          setTimeout(() => showProgress.value = false, 3000)
         } else {
-          // 更新中
           progressPercent.value = progressRes.percent || 0
-          progressText.value = progressRes.status || `正在更新（${progressRes.percent || 0}%）`
+          progressText.value = progressRes.status || `Updating(${progressRes.percent || 0}%)`
         }
       } catch (e) {
         clearInterval(updatePollInterval.value)
-        progressText.value = `查询进度失败：${e.message}`
-        setTimeout(() => {
-          showProgress.value = false
-        }, 3000)
+        progressText.value = `Failed to query progress:${e.message}`
+        setTimeout(() => showProgress.value = false, 3000)
       }
     }, 1000)
 
   } catch (error) {
-    console.error('更新课程失败', error)
-    progressText.value = `启动失败：${error.message}`
-    ElMessage.error(error.message || '网络异常，请重试')
-    
-    // 3秒后隐藏进度条
-    setTimeout(() => {
-      showProgress.value = false
-    }, 3000)
+    console.error('Failed to update', error)
+    progressText.value = `Failed to start:${error.message}`
+    ElMessage.error(error.message || 'Network error')
+    setTimeout(() => showProgress.value = false, 3000)
   } finally {
     isUpdateLoading.value = false
   }
@@ -590,6 +640,16 @@ const handleUpdateAllCourses = async () => {
 .el-button.kengu-btn:hover {
   color: #00300f;
   background-color: transparent;
+}
+.kengu-logo {
+  width: 40px;           /* 建议稍大于文字高度，视觉更协调 */
+  height: 40px;
+  object-fit: contain;   /* 保持图片比例，避免变形 */
+  border-radius: 4px;    /* 可选：轻微圆角，柔和边缘 */
+}
+
+.kengu-btn:hover .kengu-logo {
+  opacity: 0.9;          /* 图片hover时稍暗，增强反馈 */
 }
 
 .header-nav {
@@ -718,7 +778,6 @@ const handleUpdateAllCourses = async () => {
   border-color: #6e9c72;
 }
 
-/* 选中课程的高亮样式 */
 .course-tag.selected-course {
   background-color: #618e6585;
   color: white;
@@ -831,11 +890,29 @@ const handleUpdateAllCourses = async () => {
   margin-bottom: 8px;
   color: #666;
 }
-.source-link {
+
+::v-deep .message-sources .source-link a {
+  text-decoration: none !important;
+}
+
+::v-deep .message-sources .source-link a:hover {
+  text-decoration: none !important; 
+}
+
+::v-deep .source-link {
   display: block;
   margin-bottom: 6px;
   color: #0a4a1f;
   font-size: 13px;
+  transition: all 0.2s ease;
+  text-decoration: none !important;
+}
+
+::v-deep .source-link:hover {
+  background-color: #0734161f;
+  color: #073416;
+  border-color: #073416;
+  text-decoration: none !important;
 }
 
 /* 提问区域样式 */
@@ -852,7 +929,6 @@ const handleUpdateAllCourses = async () => {
   box-sizing: border-box;
 }
 
-/* 课程引用标签样式 */
 .reference-tags {
   margin-bottom: 10px;
   display: flex;
@@ -886,7 +962,6 @@ const handleUpdateAllCourses = async () => {
   gap: 10px;
 }
 
-/* 终止按钮样式 */
 .stop-btn {
   color: #f56c6c;
 }
@@ -929,4 +1004,218 @@ const handleUpdateAllCourses = async () => {
   transition: width 0.3s ease;
   background-color: #0a4a1f;
 }
+
+/* RAG 相关样式优化 */
+.rag-container {
+  margin: 12px 0;
+  border-radius: 6px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+/* 折叠/展开控制按钮 */
+.rag-toggle {
+  width: 100%;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #f5f7fa;
+  border: 1px solid #eaecef;
+  cursor: pointer;
+  font-size: 13px;
+  color: #0a4a1f;
+  transition: background-color 0.2s;
+}
+
+.rag-toggle:hover {
+  background-color: #eef2f5;
+}
+
+.rag-toggle-icon {
+  transition: transform 0.3s ease;
+  font-size: 14px;
+}
+
+/* 展开时旋转图标 */
+.rag-toggle.expanded .rag-toggle-icon {
+  transform: rotate(180deg);
+}
+
+/* 参考文本内容区 */
+.rag-content {
+  padding: 16px;
+  background-color: #fff;
+  border: 1px solid #eaecef;
+  border-top: none;
+  max-height: 400px;
+  overflow-y: auto;
+  transition: max-height 0.3s ease;
+}
+
+/* 内容区标题 */
+.rag-content-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #eaecef;
+  display: flex;
+  align-items: center;
+}
+
+.rag-content-header .thought-icon {
+  margin-right: 8px;
+  color: #0a4a1f;
+}
+
+/* 单条参考文本样式 */
+.rag-item {
+  position: relative;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background-color: #fafafa;
+  border-radius: 4px;
+  border-left: 3px solid #0a4a1f;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #444;
+  transition: transform 0.1s ease;
+}
+
+.rag-item:hover {
+  transform: translateX(3px);
+}
+
+.rag-item:last-child {
+  margin-bottom: 0;
+}
+
+/* 序号样式 */
+.rag-item::before {
+  content: attr(data-index);
+  position: absolute;
+  left: -8px;
+  top: 10px;
+  width: 16px;
+  height: 16px;
+  background-color: #0a4a1f;
+  color: white;
+  border-radius: 50%;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 相关性分数标签 */
+.rag-relevance {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  background-color: rgba(10, 74, 31, 0.1);
+  color: #0a4a1f;
+  font-size: 11px;
+  border-radius: 10px;
+}
+
+/* 弹窗样式 */
+.el-message-box {
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  width: 400px;
+}
+.el-message-box__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+  padding: 20px 24px 12px;
+}
+.el-message-box__message {
+  padding: 0 24px 16px;
+  font-size: 14px;
+  color: #666;
+}
+.el-message-box__btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 24px;
+}
+.el-button--primary {
+  background-color: #0a4a1f;
+  border-color: #0a4a1f;
+}
+.el-button--primary:hover {
+  background-color: #073416;
+  border-color: #073416;
+}
+.el-button--default {
+  color: #666;
+  border-color: #ddd;
+}
+.el-button--default:hover {
+  color: #333;
+  border-color: #bbb;
+  background-color: #f5f5f5;
+}
+
+@media (max-width: 768px) {
+  .kengu-logo {
+    width: 40px;
+    height: 40px;
+  }
+  .kengu-btn {
+    font-size: 16px;
+  }
+}
+</style>
+
+<style>
+/* 移除 scoped 属性，确保样式能穿透到弹窗组件 */
+
+/* 针对 custom-logout-box 类的弹窗样式 */
+.custom-logout-box .el-message-box {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+/* 标题颜色 */
+.custom-logout-box .el-message-box__title {
+  color: #0a4a1f !important; /* 主题绿标题 */
+}
+
+/* 内容文字颜色 */
+.custom-logout-box .el-message-box__message {
+  color: #555 !important; /* 深灰色内容 */
+  font-size: 14px !important;
+}
+
+/* 确认按钮（Yes） */
+.custom-logout-box .el-button--primary {
+  background-color: #0a4a1f !important; /* 主题绿背景 */
+  border-color: #0a4a1f !important;
+  color: white !important;
+}
+
+/* 确认按钮 hover */
+.custom-logout-box .el-button--primary:hover {
+  background-color: #073416 !important; /* 深色绿 */
+  border-color: #073416 !important;
+}
+
+/* 取消按钮（Cancel） */
+.custom-logout-box .el-button--default {
+  background-color: #f5f5f5 !important; /* 浅灰背景 */
+  border-color: #ddd !important;
+  color: #666 !important;
+}
+
+/* 取消按钮 hover */
+.custom-logout-box .el-button--default:hover {
+  background-color: #e6e6e6 !important; /* 深一点的浅灰 */
+  border-color: #ccc !important;
+  color: #333 !important;
+}
+
 </style>
