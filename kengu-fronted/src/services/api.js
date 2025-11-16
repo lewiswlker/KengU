@@ -132,7 +132,7 @@ export const mark_assignment_pending = (assignment_id) => {
 
 
 export const askQuestion = (user_request, user_id, email, messages) => {
-  return fetch('http://localhost:8009/api/chat/stream', {
+  return fetch('/chat/stream', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
