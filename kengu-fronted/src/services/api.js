@@ -97,6 +97,16 @@ export const getCourses = (course_id) => {
   return api.post('/user/courses_id', { course_id })
 }
 
+export const getEventUpdate = (email, password, start_date, end_date, id) => {
+  return api.post('/update-events', {
+    user_email: email,
+    user_password: password,
+    start_date: start_date,
+    end_date: end_date,
+    user_id: id
+  });
+}
+
 export const get_assignments_by_date_range = (start_date, end_date, user_id) => {
   return api.post('/assignments/date-range', { start_date, end_date, user_id })
 }
