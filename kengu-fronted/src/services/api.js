@@ -2,8 +2,17 @@ import axios from 'axios'
 import router from '../router'
 import { ElMessage } from 'element-plus'
 
+const getBaseURL = () => {
+  // 如果是通过内网穿透访问（域名包含 natapp），使用内网穿透的后端地址
+  if (window.location.hostname.includes('natapp')) {
+    return 'http://kengu-api.natapp1.cc/api'  // 替换成你的后端内网穿透地址
+  }
+  // 本地开发使用 localhost
+  return 'http://localhost:8009/api'
+}
+
 const api = axios.create({
-  baseURL: 'http://localhost:5000/api',
+  baseURL: getBaseURL(),
   timeout: 600000,
   headers: { 'Content-Type': 'application/json' }
 })
@@ -83,6 +92,21 @@ export const getUpdateProgress = (taskId) => {
 export const getUserCourses = (email) => {
   return api.post('/user/courses', { email })
 }
+
+export const getCourses = (course_id) => {
+  return api.post('/user/courses_id', { course_id })
+}
+
+export const getEventUpdate = (email, password, start_date, end_date, id) => {
+  return api.post('/update-events', {
+    user_email: email,
+    user_password: password,
+    start_date: start_date,
+    end_date: end_date,
+    user_id: id
+  });
+}
+
 export const get_assignments_by_date_range = (start_date, end_date, user_id) => {
   return api.post('/assignments/date-range', { start_date, end_date, user_id })
 }
@@ -108,7 +132,7 @@ export const mark_assignment_pending = (assignment_id) => {
 
 
 export const askQuestion = (user_request, user_id, email, messages) => {
-  return fetch('http://localhost:5000/api/chat/stream', {
+  return fetch('http://localhost:8009/api/chat/stream', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

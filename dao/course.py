@@ -271,3 +271,19 @@ class CourseDAO:
         except ProgrammingError as e:
             print(f"DAO: SQL error querying courses for user {user_id}: {e}")
             raise RuntimeError(f"SQL execution error: {str(e)}") from e
+    
+    def find_name_by_course_id(self, course_id: int) -> Optional[str]:
+        """
+        Find course name by course_id field (not the auto-increment id)
+        :param course_id: Target course_id (the unique course identifier field)
+        :return: Course name if exists, None otherwise
+        """
+        sql = "SELECT course_name FROM courses WHERE course_id = %s LIMIT 1"
+        try:
+            with self.db_connector.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql, (course_id,))
+                    result = cursor.fetchone()
+                    return result["course_name"] if result else None
+        except ProgrammingError as e:
+            raise RuntimeError(f"SQL execution error: {str(e)}") from e
