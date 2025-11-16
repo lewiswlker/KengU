@@ -510,6 +510,62 @@ class AssignmentDAO:
         """Mark an assignment as incomplete. Returns True if updated."""
         return self.update_status_by_id(assignment_id, 'pending')
 
+    # Update notes for assignment
+    def update_notes_by_id(self, assignment_id: int, notes: str) -> bool:
+        """Update notes for assignment. Returns True if updated."""
+        conn_candidate = self.get_connection()
+        is_ctx = self._is_context_manager(conn_candidate)
+
+        def _run(conn):
+            cursor_args = (DictCursor,) if DictCursor else ()
+            pk = self._detect_pk_column(conn)
+            sql = f"UPDATE assignment SET notes = %s WHERE `{pk}` = %s"
+            with conn.cursor(*cursor_args) as cur:
+                cur.execute(sql, (notes, assignment_id))
+                conn.commit()
+                return cur.rowcount > 0
+
+        if is_ctx:
+            with conn_candidate as conn:
+                return _run(conn)
+        else:
+            conn = conn_candidate
+            try:
+                return _run(conn)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # Update assignment path
+    def update_path_by_id(self, assignment_id: int, path: str) -> bool:
+        """Update assignment_path for assignment. Returns True if updated."""
+        conn_candidate = self.get_connection()
+        is_ctx = self._is_context_manager(conn_candidate)
+
+        def _run(conn):
+            cursor_args = (DictCursor,) if DictCursor else ()
+            pk = self._detect_pk_column(conn)
+            sql = f"UPDATE assignment SET assignment_path = %s WHERE `{pk}` = %s"
+            with conn.cursor(*cursor_args) as cur:
+                cur.execute(sql, (path, assignment_id))
+                conn.commit()
+                return cur.rowcount > 0
+
+        if is_ctx:
+            with conn_candidate as conn:
+                return _run(conn)
+        else:
+            conn = conn_candidate
+            try:
+                return _run(conn)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
     # Reset all assignments to pending for testing
     def reset_all_to_pending(self) -> int:
         """Reset all assignments to pending status. Returns number of updated rows."""

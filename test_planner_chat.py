@@ -78,6 +78,13 @@ def test_chat_scenarios():
     print("User:", chat_input.message)
     print("Agent Reply:", result.reply)
 
+    # Test 5: Generate monthly plan
+    print("\n--- Test 5: Generate Monthly Plan ---")
+    chat_input = ChatInput(user_id=1, message="11月份的时间安排计划")
+    result = agent.chat(chat_input)
+    print("User:", chat_input.message)
+    print("Agent Reply:", result.reply[:500] + "..." if len(result.reply) > 500 else result.reply)
+
     print("\n--- Tests completed ---")
 
 if __name__ == "__main__":
