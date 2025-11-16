@@ -1,5 +1,19 @@
 <template>
   <div class="dashboard-page">
+    <!-- 顶部进度条 - 与query页面风格统一 -->
+    <el-progress
+      v-if="isUpdating"
+      :percentage="updateProgress"
+      :status="updateStatus"
+      stroke-width="4"
+      style="position: fixed; top: 60px; left: 0; right: 0; z-index: 100; background: white; padding: 5px 20px;"
+    >
+      <template #default>
+        <span style="margin-right: 15px; font-size: 14px; font-weight: 500;">Updating assignments:</span>
+        <span style="margin-left: 10px; font-size: 14px;">{{ updateMessage }}</span>
+      </template>
+    </el-progress>
+
     <!-- 头部区域 -->
     <el-header class="hku-header">
       <div class="header-left">
@@ -157,7 +171,6 @@
                   
                   <!-- RAG参考文本区域 -->
                   <div v-if="msg.role === 'assistant' && msg.ragTexts && msg.ragTexts.length" class="rag-container">
-                    <!-- 折叠/展开按钮 -->
                     <div 
                       class="rag-toggle" 
                       :class="{ 'expanded': isRagExpanded(index) }"
@@ -170,7 +183,6 @@
                       <el-icon class="rag-toggle-icon"><ArrowDown /></el-icon>
                     </div>
                     
-                    <!-- 参考文本内容 -->
                     <div 
                       class="rag-content" 
                       v-show="isRagExpanded(index)"
@@ -186,7 +198,6 @@
                         :data-index="idx + 1"
                       >
                         {{ text }}
-                        <!-- 相关性分数标签 -->
                         <span v-if="msg.sources[idx]?.relevance" class="rag-relevance">
                           {{ (msg.sources[idx].relevance * 100).toFixed(0) }}% match
                         </span>
@@ -244,7 +255,7 @@
               placeholder="Please Enter your question..."
               class="query-input"
               @keydown.enter.prevent="submitQuestion"
-              :disabled="isLoading || isGenerating"
+              :disabled="isLoading || isGenerating || isUpdating"
             ></textarea>
             
             <div class="query-actions">
@@ -269,8 +280,8 @@
               <el-button 
                 type="primary" 
                 @click="submitQuestion"
-                :loading="isLoading || isGenerating"
-                :disabled="(!question.trim() && selectedCourses.length === 0) || isGenerating"
+                :loading="isLoading || isGenerating || isUpdating"
+                :disabled="(!question.trim() && selectedCourses.length === 0) || isGenerating || isUpdating"
                 class="submit-btn"
               >
                 <el-icon><Search /></el-icon>
@@ -285,16 +296,17 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue';
+import { ref, watch, nextTick, onMounted, onUnmounted, computed, onDeactivated } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../stores/user';
-import { User, ArrowDown, Search, Document} from '@element-plus/icons-vue';
-import { ElMessage, ElLoading, ElMessageBox } from 'element-plus';
+import { User, ArrowDown, Search, Document } from '@element-plus/icons-vue';
+import { ElMessage, ElLoading, ElMessageBox, ElProgress } from 'element-plus';
 import { 
   get_assignments_by_date_range, 
   getCourses,
   mark_assignment_complete,
-  mark_assignment_pending
+  mark_assignment_pending,
+  getUpdateProgress
 } from '../services/api';
 
 // 状态管理与路由
@@ -317,11 +329,22 @@ const currentMonth = ref(new Date().getMonth());
 const typingRef = ref(null);
 const messageRefs = ref([]);
 
+// 进度跟踪相关状态 - 与query页面风格统一
+const isUpdating = ref(false);
+const updateProgress = ref(0);
+const updateMessage = ref('Initializing update...');
+const updateStatus = computed(() => {
+  if (updateMessage.value.includes('Failed')) return 'exception';
+  if (updateProgress.value === 100) return 'success';
+  return 'active';
+});
+let progressPollTimer = null;
+
 // RAG折叠状态管理
 const activeRagCollapse = ref('');
 
 // 日历配置 - 星期表头
-const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+const weekdays = ['Sun', 'Mon', 'Tue', 'Wen', 'Thu', 'Fri', 'Sat'];
 
 // 计算42天日历
 const calendarDays = computed(() => {
@@ -371,9 +394,7 @@ const deduplicateSources = (sources) => {
   for (const s of sources) {
     if (!s.url) continue;
     
-    // 标准化URL（移除尾部斜杠差异）
     const normalizedUrl = s.url.replace(/\/$/, '');
-    
     if (!urlSet.has(normalizedUrl)) {
       urlSet.add(normalizedUrl);
       uniqueSources.push(s);
@@ -418,6 +439,103 @@ const goToToday = () => {
   ElMessage.success('Back to today');
 };
 
+// 查询更新进度 - 与query页面风格统一
+const checkUpdateProgress = async () => {
+  const taskId = userStore.eventTaskId;
+  if (!taskId) {
+    console.log('No task ID found, stopping progress check');
+    stopProgressPolling();
+    return;
+  }
+
+  try {
+    console.log('Checking update status for task:', taskId);
+    const response = await getUpdateProgress(taskId);
+    
+    if (!response) {
+      throw new Error('Invalid response from server');
+    }
+
+    if (response.success) {
+      const percent = response.percent;
+      const message = response.message;
+      const completed = response.completed;
+      const failed = response.failed;
+      const error = response.error;
+      
+      // 强制更新进度状态
+      updateProgress.value = Math.min(100, Math.max(0, percent || 0));
+      updateMessage.value = message || 'Updating data...';
+      isUpdating.value = true;
+
+      console.log(`Update progress: ${updateProgress.value}% - ${updateMessage.value}`);
+
+      // 处理完成状态
+      if (completed) {
+        updateStatus.value; // 触发计算属性更新
+        ElMessage.success('Data update completed! Refreshing tasks...');
+        stopProgressPolling();
+        await loadAllAssignments();
+        setTimeout(() => {
+          isUpdating.value = false;
+          updateProgress.value = 0;
+          userStore.setEventTaskId(null);
+        }, 2000);
+      }
+
+      // 处理失败状态
+      if (failed) {
+        updateMessage.value = `Updating Failed: ${error || 'Unknown error'}`;
+        updateStatus.value; // 触发计算属性更新
+        ElMessage.error(updateMessage.value);
+        stopProgressPolling();
+        setTimeout(() => {
+          isUpdating.value = false;
+          updateProgress.value = 0;
+        }, 3000);
+      }
+    } else {
+      updateMessage.value = response.message || 'Update in progress...';
+      isUpdating.value = true;
+    }
+  } catch (error) {
+    console.error('Error checking update status:', error);
+    updateMessage.value = `Failed to query progress: ${error.message}`;
+    isUpdating.value = true;
+    
+    // 仅在有任务ID时重试
+    if (taskId) {
+      setTimeout(checkUpdateProgress, 2000);
+    } else {
+      stopProgressPolling();
+    }
+  }
+};
+
+// 启动进度轮询
+const startProgressPolling = () => {
+  if (progressPollTimer) {
+    clearInterval(progressPollTimer);
+  }
+  
+  if (userStore.eventTaskId) {
+    console.log('Starting progress polling for task:', userStore.eventTaskId);
+    checkUpdateProgress();
+    progressPollTimer = setInterval(checkUpdateProgress, 1000);
+  } else {
+    console.log('No event task ID, cannot start polling');
+  }
+};
+
+// 停止进度轮询
+const stopProgressPolling = () => {
+  if (progressPollTimer) {
+    clearInterval(progressPollTimer);
+    progressPollTimer = null;
+    console.log('Progress polling stopped');
+  }
+};
+
 // 获取作业数据
 const fetchAssignmentsByDateRange = async (startDate, endDate) => {
   const loading = ElLoading.service({
@@ -458,14 +576,35 @@ const markAssignmentPending = async (assignmentId) => {
   }
 };
 
-// 初始化加载作业
+// 初始化加载作业和启动进度轮询
 onMounted(async () => {
+  console.log('Dashboard mounted, checking user status');
   if (!userStore.email) {
     router.push('/');
     return;
   }
+  
   await loadAllAssignments();
+  
+  // 确保任务ID存在时才启动轮询
+  console.log('User event task ID:', userStore.eventTaskId);
+  if (userStore.eventTaskId) {
+    startProgressPolling();
+  } else {
+    console.log('No event task ID found on mount');
+  }
 });
+
+// 组件清理
+onUnmounted(cleanup);
+onDeactivated(cleanup);
+
+function cleanup() {
+  stopProgressPolling();
+  if (abortController.value) {
+    abortController.value.abort();
+  }
+}
 
 // 获取课程名称
 const getCourseName = async (courseId) => {
@@ -509,11 +648,6 @@ const loadAllAssignments = async () => {
   selectedDateEvents.value = getSelectedDateEvents();
 };
 
-// 组件卸载时清理
-onUnmounted(() => {
-  if (abortController.value) abortController.value.abort();
-});
-
 // 聊天相关方法
 const clearInput = () => {
   question.value = '';
@@ -529,7 +663,6 @@ const stopGeneration = () => {
     let finalContent = currentAiContent.value;
     const currentRagTexts = [];
     
-    // 处理来源去重
     const uniqueSources = window.currentRetrievalSources ? deduplicateSources(window.currentRetrievalSources) : [];
     currentRagTexts.push(...uniqueSources.map(s => s.text).filter(Boolean));
     
@@ -633,7 +766,6 @@ const submitQuestion = async () => {
               try {
                 const sources = JSON.parse(sourcesJson)
                 
-                // 解析后立即去重
                 const newSources = sources.map(s => ({
                   name: s.title || 'Unknown sources',
                   url: s.source_url || '#',
@@ -641,7 +773,6 @@ const submitQuestion = async () => {
                   text: s.text || ''
                 }))
                 
-                // 合并并去重
                 const mergedSources = [...(window.currentRetrievalSources || []), ...newSources]
                 window.currentRetrievalSources = deduplicateSources(mergedSources)
                 
@@ -663,7 +794,6 @@ const submitQuestion = async () => {
 
     isGenerating.value = false
     if (currentAiContent.value) {
-      // 最终存储前再次去重
       const uniqueSources = window.currentRetrievalSources ? deduplicateSources(window.currentRetrievalSources) : []
       const ragTexts = uniqueSources.map(s => s.text).filter(Boolean)
       
@@ -828,13 +958,11 @@ const updateTodoStatus = async (event) => {
   if (targetEvent) targetEvent.completed = event.completed;
 
   if (event.assignmentId) {
-    // 根据勾选状态调用不同的API
     const result = event.completed 
-      ? await markAssignmentComplete(event.assignmentId)  // 勾选：标记为完成
-      : await markAssignmentPending(event.assignmentId);  // 取消勾选：标记为待处理
+      ? await markAssignmentComplete(event.assignmentId)
+      : await markAssignmentPending(event.assignmentId);
 
     if (!result.success) {
-      // 失败时回滚状态
       if (targetEvent) targetEvent.completed = !event.completed;
       ElMessage.error(result.error || 'Failed to update');
     } else {
@@ -845,11 +973,11 @@ const updateTodoStatus = async (event) => {
 </script>
 
 <style scoped>
-/* 基础样式保持不变 */
+/* 基础样式 */
 .dashboard-page {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  height: 100vh;
   overflow: hidden;
 }
 
@@ -876,14 +1004,14 @@ const updateTodoStatus = async (event) => {
 }
 
 .kengu-logo {
-  width: 40px;           /* 建议稍大于文字高度，视觉更协调 */
+  width: 40px;
   height: 40px;
-  object-fit: contain;   /* 保持图片比例，避免变形 */
-  border-radius: 4px;    /* 可选：轻微圆角，柔和边缘 */
+  object-fit: contain;
+  border-radius: 4px;
 }
 
 .kengu-btn:hover .kengu-logo {
-  opacity: 0.9;          /* 图片hover时稍暗，增强反馈 */
+  opacity: 0.9;
 }
 
 .header-nav {
@@ -905,6 +1033,9 @@ const updateTodoStatus = async (event) => {
   padding: 20px;
   box-sizing: border-box;
   overflow: hidden;
+  /* 为顶部进度条留出空间 */
+  margin-top: 0;
+  padding-top: 10px;
 }
 
 /* 日历样式 */
@@ -1256,7 +1387,6 @@ const updateTodoStatus = async (event) => {
   transition: all 0.2s ease;
 }
 
-/* 折叠/展开控制按钮 */
 .rag-toggle {
   width: 100%;
   padding: 8px 12px;
@@ -1280,12 +1410,10 @@ const updateTodoStatus = async (event) => {
   font-size: 14px;
 }
 
-/* 展开时旋转图标 */
 .rag-toggle.expanded .rag-toggle-icon {
   transform: rotate(180deg);
 }
 
-/* 参考文本内容区 */
 .rag-content {
   padding: 16px;
   background-color: #fff;
@@ -1296,7 +1424,6 @@ const updateTodoStatus = async (event) => {
   transition: max-height 0.3s ease;
 }
 
-/* 内容区标题 */
 .rag-content-header {
   font-size: 14px;
   font-weight: 600;
@@ -1313,7 +1440,6 @@ const updateTodoStatus = async (event) => {
   color: #0a4a1f;
 }
 
-/* 单条参考文本样式 */
 .rag-item {
   position: relative;
   padding: 10px 12px;
@@ -1335,7 +1461,6 @@ const updateTodoStatus = async (event) => {
   margin-bottom: 0;
 }
 
-/* 序号样式 */
 .rag-item::before {
   content: attr(data-index);
   position: absolute;
@@ -1352,7 +1477,6 @@ const updateTodoStatus = async (event) => {
   justify-content: center;
 }
 
-/* 相关性分数标签 */
 .rag-relevance {
   display: inline-block;
   margin-left: 8px;
@@ -1404,29 +1528,25 @@ const updateTodoStatus = async (event) => {
   background-color: #f5f5f5;
 }
 
-/* 1. 未选中状态 - 复选框边框颜色 */
+/* 复选框样式 */
 ::v-deep .el-checkbox__inner {
-  border-color: #ccc !important; /* 默认边框色 */
+  border-color: #ccc !important;
   transition: all 0.2s !important;
 }
 
-/* 2. 鼠标 hover 未选中状态 */
 ::v-deep .el-checkbox:hover .el-checkbox__inner {
-  border-color: #0a4a1f !important; /*  hover 时边框变色 */
+  border-color: #0a4a1f !important;
 }
 
-/* 3. 选中状态 - 复选框背景色 + 对勾颜色 */
 ::v-deep .el-checkbox__input.is-checked .el-checkbox__inner {
-  background-color: #0a4a1f !important; /* 选中后的背景色 */
-  border-color: #0a4a1f !important;    /* 选中后的边框色 */
+  background-color: #0a4a1f !important;
+  border-color: #0a4a1f !important;
 }
 
-/* 4. 选中状态 - 对勾图标颜色（白色） */
 ::v-deep .el-checkbox__input.is-checked .el-checkbox__inner::after {
-  border-color: white !important; /* 对勾颜色 */
+  border-color: white !important;
 }
 
-/* 5. 禁用状态（可选，保持风格统一） */
 ::v-deep .el-checkbox__input.is-disabled .el-checkbox__inner {
   background-color: #f5f5f5 !important;
   border-color: #ddd !important;
@@ -1436,7 +1556,24 @@ const updateTodoStatus = async (event) => {
   border-color: #e6e6e6 !important;
 }
 
+/* 进度条样式 - 与query页面保持一致 */
+::v-deep .el-progress-bar__inner {
+  background-color: #0a4a1f !important;
+  transition: width 0.3s ease !important;
+}
 
+::v-deep .el-progress__text {
+  color: #666 !important;
+  font-size: 14px !important;
+}
+
+::v-deep .el-progress--exception .el-progress-bar__inner {
+  background-color: #f56c6c !important;
+}
+
+::v-deep .el-progress--success .el-progress-bar__inner {
+  background-color: #52c41a !important;
+}
 
 /* 响应式调整 */
 @media (max-width: 1200px) {
@@ -1459,49 +1596,40 @@ const updateTodoStatus = async (event) => {
 </style>
 
 <style>
-/* 移除 scoped 属性，确保样式能穿透到弹窗组件 */
-
-/* 针对 custom-logout-box 类的弹窗样式 */
+/* 弹窗样式 */
 .custom-logout-box .el-message-box {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
-/* 标题颜色 */
 .custom-logout-box .el-message-box__title {
-  color: #0a4a1f !important; /* 主题绿标题 */
+  color: #0a4a1f !important;
 }
 
-/* 内容文字颜色 */
 .custom-logout-box .el-message-box__message {
-  color: #555 !important; /* 深灰色内容 */
+  color: #555 !important;
   font-size: 14px !important;
 }
 
-/* 确认按钮（Yes） */
 .custom-logout-box .el-button--primary {
-  background-color: #0a4a1f !important; /* 主题绿背景 */
+  background-color: #0a4a1f !important;
   border-color: #0a4a1f !important;
   color: white !important;
 }
 
-/* 确认按钮 hover */
 .custom-logout-box .el-button--primary:hover {
-  background-color: #073416 !important; /* 深色绿 */
+  background-color: #073416 !important;
   border-color: #073416 !important;
 }
 
-/* 取消按钮（Cancel） */
 .custom-logout-box .el-button--default {
-  background-color: #f5f5f5 !important; /* 浅灰背景 */
+  background-color: #f5f5f5 !important;
   border-color: #ddd !important;
   color: #666 !important;
 }
 
-/* 取消按钮 hover */
 .custom-logout-box .el-button--default:hover {
-  background-color: #e6e6e6 !important; /* 深一点的浅灰 */
+  background-color: #e6e6e6 !important;
   border-color: #ccc !important;
   color: #333 !important;
 }
-
 </style>
