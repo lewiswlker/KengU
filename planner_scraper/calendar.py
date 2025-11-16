@@ -24,7 +24,7 @@ from dao import CourseDAO
 # Set DB password
 settings.DB_PASS = "123456"
 
-CONNECT_TIME_OUT = 5  # seconds
+CONNECT_TIME_OUT = 15  # seconds
 
 class MoodleCalendarCrawler:
     def __init__(self, headless=True, verbose=False):
@@ -39,6 +39,7 @@ class MoodleCalendarCrawler:
         self.headless = headless
         self.course_urls = {}  # Initialize course URLs dictionary
         self.courses = []
+        self.CONNECT_TIME_OUT = CONNECT_TIME_OUT  # Instance variable for timeout
 
         # Initialize browser
         self._initialize_driver()
@@ -314,7 +315,7 @@ class MoodleCalendarCrawler:
                 time.sleep(1)
 
                 # 等待事件加载完成
-                WebDriverWait(self.driver, self.CONNECT_TIME_OUT).until(
+                WebDriverWait(self.driver, CONNECT_TIME_OUT).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, ".calendarwrapper"))
                 )
                 time.sleep(0.5)
@@ -344,7 +345,7 @@ class MoodleCalendarCrawler:
             try:
                 # 1. 从data属性直接提取核心信息（最可靠的方式）
                 event_title = container.get('data-event-title', '未命名事件')  # 直接获取data-event-title
-                course_id = container.get('data-course-id', '未知课程ID')
+                course_id = container.get('data-course-id', '未知��程ID')
                 event_id = container.get('data-event-id', '未知事件ID')
                 event_type = container.get('data-event-eventtype', '未知类型')
                 component = container.get('data-event-component', '未知组件')
