@@ -108,14 +108,14 @@ async def api_update_knowledge_base(
             # 步骤1：登录验证（10%）
             task_status[task_id].update({
                 "percent": 10,
-                "message": "验证用户身份..."
+                "message": "Verifying user identity..."
             })
             time.sleep(2)  # 模拟登录耗时（根据实际情况调整）
 
             # 步骤2：执行Moodle爬取（20%-50%）
             task_status[task_id].update({
                 "percent": 20,
-                "message": "开始爬取Moodle课程..."
+                "message": "Getting Moodle courses..."
             })
             # 记录开始时间，用于估算进度
             moodle_start = time.time()
@@ -132,7 +132,7 @@ async def api_update_knowledge_base(
             # 步骤3：处理Exambase（50%-80%）
             task_status[task_id].update({
                 "percent": 50,
-                "message": "开始处理Exambase数据..."
+                "message": "Solving Exambase data..."
             })
             exambase_start = time.time()
             # 假设Exambase处理耗时约为Moodle的0.6倍（根据实际情况调整）
@@ -142,7 +142,7 @@ async def api_update_knowledge_base(
             # 步骤4：保存数据（80%-100%）
             task_status[task_id].update({
                 "percent": 80,
-                "message": "保存课程数据..."
+                "message": "Loading information..."
             })
             time.sleep(1)  # 模拟保存耗时
 
@@ -150,7 +150,7 @@ async def api_update_knowledge_base(
             task_status[task_id].update({
                 "status": "completed",
                 "percent": 100,
-                "message": "更新完成",
+                "message": "Updating completed",
                 "result": result,
                 "completed": True
             })
@@ -166,7 +166,7 @@ async def api_update_knowledge_base(
     background_tasks.add_task(run_update_with_estimated_progress)
     return {
         "success": True,
-        "message": "更新任务已启动",
+        "message": "Updating start",
         "task_id": task_id
     }
 
@@ -213,14 +213,14 @@ async def get_events_update(
             # 步骤1：初始化爬虫（10%）
             task_status[task_id].update({
                 "percent": 10,
-                "message": "初始化Moodle爬虫..."
+                "message": "Initializing..."
             })
             main_scraper = MoodleCalendarCrawler(headless=True, verbose=False)
 
             # 步骤2：登录验证（20%）
             task_status[task_id].update({
                 "percent": 20,
-                "message": "验证Moodle账号..."
+                "message": "Verifying Moodle account..."
             })
             if not main_scraper.connect_moodle(username, password):
                 raise Exception("Moodle登录失败，请检查账号密码")
@@ -239,14 +239,14 @@ async def get_events_update(
             # 步骤4：获取课程列表（40%）
             task_status[task_id].update({
                 "percent": 40,
-                "message": "获取用户课程列表..."
+                "message": "Getting user courses..."
             })
             course_ids = main_scraper.get_course_ids_from_db(user_id)
             if not course_ids:
                 task_status[task_id].update({
                     "status": "completed",
                     "percent": 100,
-                    "message": "无关联课程，无需爬取",
+                    "message": "No courses",
                     "result": {"saved_count": 0, "total_events": 0},
                     "completed": True
                 })
@@ -255,7 +255,7 @@ async def get_events_update(
             total_courses = len(course_ids)
             task_status[task_id].update({
                 "total_courses": total_courses,
-                "message": f"发现{total_courses}门课程，开始爬取..."
+                "message": f"Find {total_courses} courses, start getting..."
             })
 
             # 步骤5：并发爬取课程事件（40%-90%）
@@ -273,7 +273,7 @@ async def get_events_update(
                 try:
                     # 子线程登录（Moodle会话不共享）
                     if not course_scraper.connect_moodle(username, password):
-                        print(f"课程{course_id}登录失败，跳过")
+                        print(f"Course {course_id} failed to load, skip")
                         return []
                     
                     # 爬取事件
@@ -282,7 +282,7 @@ async def get_events_update(
                         end_date=end_date,
                         course_id=str(course_id)
                     )
-                    print(f"课程{course_id}（{course_name}）：获取到{len(events)}个事件")
+                    print(f"Course {course_id}（{course_name}）：get {len(events)} events")
 
                     # 更新进度（原子操作）
                     with lock:
@@ -292,7 +292,7 @@ async def get_events_update(
                         progress = 40 + (processed / total_courses) * 50
                         task_status[task_id].update({
                             "percent": min(90, int(progress)),
-                            "message": f"正在处理：{course_name}（{processed}/{total_courses}）"
+                            "message": f"Dealing：{course_name}（{processed}/{total_courses}）"
                         })
                     return events
                 finally:
@@ -316,7 +316,7 @@ async def get_events_update(
             # 步骤6：保存作业数据（90%-100%）
             task_status[task_id].update({
                 "percent": 90,
-                "message": f"开始保存作业数据（共{len(all_events)}个事件）..."
+                "message": f"Start storing information（{len(all_events)}events in total）..."
             })
 
             saved_count = 0
@@ -338,7 +338,7 @@ async def get_events_update(
             task_status[task_id].update({
                 "status": "completed",
                 "percent": 100,
-                "message": f"爬取完成，成功保存{saved_count}个新作业",
+                "message": f"Updating completed, {saved_count}new events",
                 "result": {
                     "saved_count": saved_count,
                     "total_events": len(all_events),
