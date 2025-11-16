@@ -171,7 +171,7 @@ def generate_embeddings_from_download_stats(
         }
     """
     if base_url is None:
-        base_url = os.getenv("KNOWLEDGE_BASE_URL", "http://127.0.0.1:8009/")
+        base_url = os.getenv("KNOWLEDGE_BASE_URL", "http://kengu-api.natapp1.cc/")
     
     logger = get_logger(log_file="rag_scraper.log", verbose=True)
     generator = VectorEmbeddingsGenerator(base_url=base_url)

@@ -381,7 +381,7 @@ def update_knowledge_base(
                     # Generate embeddings using download statistics
                     embedding_stats = generate_embeddings_from_download_stats(
                         download_stats=stats,
-                        base_url=os.getenv("KNOWLEDGE_BASE_URL", "http://127.0.0.1:8009/knowledge_base/")
+                        base_url=os.getenv("KNOWLEDGE_BASE_URL", "http://kengu-api.natapp1.cc/")
                     )
                     
                     if embedding_stats.get("success"):
