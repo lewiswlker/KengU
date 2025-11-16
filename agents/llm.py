@@ -2,7 +2,7 @@ from collections.abc import AsyncGenerator
 
 from openai import AsyncOpenAI
 
-from agents import AgentType, agent_router
+from agents import AgentType, agent_router, get_router_system_prompt
 from core.config import settings
 
 
@@ -29,7 +29,7 @@ class LLM:
         Returns:
             str: The type of agent best suited to handle the request.
         """
-        result = await agent_router(user_request=user_request)
+        result = await agent_router(system_router_prompt=get_router_system_prompt(), user_request=user_request)
         return result.agent_type
 
     @staticmethod

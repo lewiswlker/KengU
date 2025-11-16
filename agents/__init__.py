@@ -4,6 +4,7 @@ Agents
 
 from __future__ import annotations
 
+import inspect
 from enum import Enum
 
 import dspy
@@ -40,15 +41,50 @@ class AgentType(str, Enum):
 
 class AgentRouterSignature(dspy.Signature):
     """
-    Analyze user request and route to the most appropriate agent.
+    Analyze user request and route to the most appropriate agent list.
 
-    Available agents:
-    - planner: For task planning, course scheduling, and academic planning
-    - scraper: For web scraping, data extraction from Moodle or exam databases
-    - rag: For retrieval-augmented generation tasks involving document retrieval
-    - general: For general queries and tasks that don't fit other categories
+    Available agents and their responsibilities:
+
+    1. PLANNER - Use for:
+       - Study schedules, calendars, and time management
+       - Assignment deadlines and due dates
+       - Learning progress tracking and academic progress
+       - Task planning and study planning
+       - Course planning and academic planning
+       Keywords: schedule, plan, progress, deadline, due, calendar, time management
+
+    2. RAG (Retrieval-Augmented Generation) - Use for:
+       - Course content and topics (what to learn)
+       - Concept explanations and knowledge queries
+       - Existing course materials and documents
+       - Searching through stored information
+       - Questions about specific courses or subjects
+       Keywords: what, explain, topics, content, information, find, course materials, concept
+
+    3. SCRAPER - Use ONLY when explicitly requested:
+       - Update/refresh/sync data from external sources
+       - Scrape/crawl/fetch new data
+       - Must contain explicit action verbs: update, refresh, scrape, sync, fetch, crawl
+       Keywords: update, refresh, scrape, sync, fetch, crawl (explicit action required)
+
+    4. GENERAL - Use for:
+       - Greetings and casual conversation
+       - Off-topic queries unrelated to academics
+       - General assistance not fitting other categories
+       Keywords: hello, hi, joke, weather, chat
+
+    Routing rules:
+    - NEVER route to SCRAPER unless explicit update/scrape action is mentioned
+    - Questions about "latest" or "recent" data should use RAG (query existing data), NOT SCRAPER
+    - Progress/deadline/due date queries → PLANNER
+    - Content/explanation/topic queries → RAG
+    - If query has multiple intents, return multiple agents (e.g., ["rag", "planner"])
+    - "What assignments" = content query → RAG (unless explicitly asking to update)
+    - "When assignments due" = deadline query → PLANNER
+    - "Analyze X and plan Y" → Both RAG and PLANNER
     """
 
+    system_router_prompt: str = dspy.InputField()
     user_request: str = dspy.InputField(desc="The user's request or query that needs to be processed")
     agent_type: list[AgentType] = dspy.OutputField(
         desc="List of agent types best suited to handle this request (can be multiple agents)"
@@ -80,6 +116,24 @@ class AgentRouter(dspy.Module):
         return result
 
 
+def get_class_docstring(cls: type) -> str:
+    """
+    Get the docstring from a class.
+
+    Args:
+        cls: The class to extract docstring from
+
+    Returns:
+        The formatted docstring, or empty string if no docstring exists
+    """
+    return inspect.getdoc(cls) or ""
+
+
+def get_router_system_prompt() -> str:
+    """Get the system prompt for the agent router from AgentRouterSignature docstring."""
+    return get_class_docstring(AgentRouterSignature)
+
+
 # Initialize the global router instance
 agent_router = dspy.asyncify(dspy.Predict(AgentRouterSignature))
 
@@ -91,4 +145,6 @@ __all__ = [
     "dspy",
     "update_knowledge_base",
     "PlannerAgent",
+    "get_class_docstring",
+    "get_router_system_prompt",
 ]
