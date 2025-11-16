@@ -51,6 +51,27 @@
         </el-form-item>
       </el-form>
     </el-card>
+
+    <!-- 首次登录提示弹窗 -->
+    <el-dialog
+      v-model="showFirstLoginTip"
+      title="Notice"
+      :closable="false"
+      :show-close="false"
+      :modal="true"
+      :duration="0"
+      width="350px"
+    >
+      <div class="tip-content">
+        <el-icon class="tip-icon"><InfoFilled /></el-icon>
+        <p>If this is your first login, it may take more time to initialize your data. Please be patient.</p>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="showFirstLoginTip = false">
+          I understand
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -58,14 +79,16 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { verifyHkuAuth } from '../services/api'
-import { Book, User, Lock } from '@element-plus/icons-vue'
+import { verifyHkuAuth, getEventUpdate } from '../services/api'
+import { Book, User, Lock, InfoFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const loginFormRef = ref()
 const isLoading = ref(false)
 const router = useRouter()
 const userStore = useUserStore()
+// 新增：控制首次登录提示弹窗显示
+const showFirstLoginTip = ref(false)
 
 const loginForm = reactive({
   email: '',
@@ -79,12 +102,37 @@ const loginRules = {
   ],
   password: [
     { required: true, message: 'Please enter your password', trigger: 'blur' },
-    { min: 6, message: 'Password must be at least 6 characters', trigger: 'blur' }  // 增强密码验证
+    { min: 6, message: 'Password must be at least 6 characters', trigger: 'blur' }
   ]
+}
+
+// 新增：后台获取事件更新
+const fetchEventsInBackground = async (email, password, userId) => {
+  try {
+    // 计算日期范围：过去30天到未来90天
+    const today = new Date()
+    const startDate = new Date(today.setDate(today.getDate() - 10)).toISOString().split('T')[0]
+    
+    const futureDate = new Date()
+    const endDate = new Date(futureDate.setDate(futureDate.getDate() + 40)).toISOString().split('T')[0]
+
+    // 调用事件更新接口
+    const response = await getEventUpdate(email, password, startDate, endDate, userId)
+    
+    if (response.data.success && response.data.task_id) {
+      userStore.setEventTaskId(response.data.task_id)
+      console.log('事件更新任务已启动，任务ID：', response.data.task_id)
+    } else {
+      console.warn('启动事件更新任务失败')
+    }
+  } catch (error) {
+    console.error('后台获取事件失败：', error)
+  }
 }
 
 const handleLogin = async () => {
   try {
+    // 表单验证
     await loginFormRef.value.validate()
   } catch (error) {
     return ElMessage.warning('Please complete the form correctly')
@@ -92,6 +140,7 @@ const handleLogin = async () => {
 
   isLoading.value = true
   try {
+    // 验证用户身份
     const authResult = await verifyHkuAuth(loginForm.email, loginForm.password)
     
     if (!authResult.success) {
@@ -103,26 +152,36 @@ const handleLogin = async () => {
       return ElMessage.error('Failed to get user information')
     }
     
-    // 第一步：调用 setLogin 批量设置用户信息
+    // 存储用户信息
     userStore.setLogin(loginForm.email, loginForm.password, userId)
-    
-    // 第二步：单独调用 setUserId 确保 id 存储成功（双重保险）
-    // 避免 setLogin 中可能的逻辑遗漏，确保 userId 可靠写入本地存储和 Pinia
     userStore.setUserId(userId)
-    console.log('原始 userId:', userId, '类型:', typeof userId)
-    console.log('Pinia 中的 id:', userStore.id, '类型:', typeof userStore.id)
-    // 验证 id 是否存储成功（可选，增强健壮性）
-    if (!userStore.id || userStore.id !== userId) {
-      throw new Error('Failed to save user ID')
-    }
 
+    // 检查是否为首次登录（通过课程数量判断）
     await userStore.loadCourses()
-    if (userStore.courses.length === 0) {
-      ElMessage.info('No courses found, please update your course data after login')
+    const isFirstLogin = userStore.courses.length === 0
+    
+    // 首次登录显示提示弹窗
+    if (isFirstLogin) {
+      showFirstLoginTip.value = true
+      ElMessage.info('Initializing your data, please wait...')
     }
 
+    // 后台启动事件更新（不阻塞登录流程）
+    setTimeout(() => {
+      fetchEventsInBackground(loginForm.email, loginForm.password, userId)
+    }, 0)
+
+    // 登录成功处理
     ElMessage.success('Login successful!')
-    router.push('/query')
+    // 如果是首次登录，等用户点击弹窗确认后再跳转
+    if (isFirstLogin) {
+      showFirstLoginTip.value = true
+
+      // 绑定关闭事件（使用$on在setup中需要通过ref获取组件实例）
+      // 实际项目中可使用组件的close事件
+    } else {
+      router.push('/query')
+    }
 
   } catch (error) {
     console.error('Login error:', error)
@@ -198,5 +257,23 @@ const handleLogin = async () => {
 :deep(.el-input__wrapper:focus-within) {
   box-shadow: 0 0 0 2px rgba(10, 74, 31, 0.2);
   border-color: #0a4a1f;
+}
+
+/* 提示弹窗样式 */
+.tip-content {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 10px 0;
+}
+
+.tip-icon {
+  color: #409eff;
+  font-size: 24px;
+}
+
+.tip-content p {
+  margin: 0;
+  line-height: 1.6;
 }
 </style>
