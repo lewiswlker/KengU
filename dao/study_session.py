@@ -54,12 +54,12 @@ class StudySessionDAO:
                          c.course_name
                   FROM study_sessions ss
                            LEFT JOIN assignment a ON ss.assignment_id = a.id
-                           LEFT JOIN courses c ON a.course_id = c.course_id
+                           LEFT JOIN courses c ON a.course_id = c.id
                   WHERE ss.start_time BETWEEN %s AND %s
                     AND EXISTS (SELECT 1 \
                                 FROM user_courses uc \
                                 WHERE uc.user_id = %s \
-                                  AND uc.course_id = a.course_id)
+                                  AND uc.course_id = c.id)
                   ORDER BY ss.start_time \
                   """
             params = (start_date, end_date, user_id)
@@ -105,12 +105,12 @@ class StudySessionDAO:
                          c.course_name
                   FROM study_sessions ss
                            LEFT JOIN assignment a ON ss.assignment_id = a.id
-                           LEFT JOIN courses c ON a.course_id = c.course_id
-                  WHERE c.course_id = %s
+                           LEFT JOIN courses c ON a.course_id = c.id
+                  WHERE c.id = %s
                     AND EXISTS (SELECT 1 \
                                 FROM user_courses uc \
                                 WHERE uc.user_id = %s \
-                                  AND uc.course_id = c.course_id) \
+                                  AND uc.course_id = c.id) \
                   """
             params = [course_id, user_id]
 
@@ -184,6 +184,103 @@ class StudySessionDAO:
                     'active_days': row_dict.get('active_days', 0) or 0,
                     'period_days': days
                 }
+
+        if is_ctx:
+            with conn_candidate as conn:
+                return _run(conn)
+        else:
+            conn = conn_candidate
+            try:
+                return _run(conn)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # New method to add a study session
+    def add_study_session(self, assignment_id: int, start_time: datetime, duration_minutes: int, notes: str = None) -> int:
+        """Insert a study session record and return the new session id (if DB returns one) or 1 for success.
+
+        Note: The study_sessions table is expected to have an auto-increment primary key `session_id`.
+        """
+        conn_candidate = self.get_connection()
+        is_ctx = self._is_context_manager(conn_candidate)
+
+        def _run(conn):
+            cursor_args = (DictCursor,) if DictCursor else ()
+            sql = """
+                INSERT INTO study_sessions (assignment_id, start_time, duration_minutes, notes)
+                VALUES (%s, %s, %s, %s)
+            """
+            params = (assignment_id, start_time, duration_minutes, notes)
+            with conn.cursor(*cursor_args) as cur:
+                cur.execute(sql, params)
+                conn.commit()  # Add commit here
+                # attempt to return lastrowid if available
+                lastid = getattr(cur, 'lastrowid', None)
+                return int(lastid) if lastid is not None else 1
+
+        if is_ctx:
+            with conn_candidate as conn:
+                return _run(conn)
+        else:
+            conn = conn_candidate
+            try:
+                return _run(conn)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # New method to delete a study session by assignment title and user
+    def delete_study_session_by_title(self, assignment_title: str, user_id: int) -> bool:
+        """Delete study session by assignment title for user. Returns True if deleted."""
+        conn_candidate = self.get_connection()
+        is_ctx = self._is_context_manager(conn_candidate)
+
+        def _run(conn):
+            cursor_args = (DictCursor,) if DictCursor else ()
+            sql = """
+                DELETE ss FROM study_sessions ss
+                JOIN assignment a ON ss.assignment_id = a.id
+                WHERE a.title = %s
+                  AND EXISTS (SELECT 1 FROM user_courses uc WHERE uc.user_id = %s AND uc.course_id = a.course_id)
+            """
+            params = (assignment_title, user_id)
+            with conn.cursor(*cursor_args) as cur:
+                cur.execute(sql, params)
+                conn.commit()
+                return cur.rowcount > 0
+
+        if is_ctx:
+            with conn_candidate as conn:
+                return _run(conn)
+        else:
+            conn = conn_candidate
+            try:
+                return _run(conn)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # New method to delete study session by id
+    def delete_study_session_by_id(self, session_id: int) -> bool:
+        """Delete study session by session_id. Returns True if deleted."""
+        conn_candidate = self.get_connection()
+        is_ctx = self._is_context_manager(conn_candidate)
+
+        def _run(conn):
+            cursor_args = (DictCursor,) if DictCursor else ()
+            sql = "DELETE FROM study_sessions WHERE session_id = %s"
+            params = (session_id,)
+            with conn.cursor(*cursor_args) as cur:
+                cur.execute(sql, params)
+                conn.commit()
+                return cur.rowcount > 0
 
         if is_ctx:
             with conn_candidate as conn:

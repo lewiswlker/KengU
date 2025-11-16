@@ -97,10 +97,13 @@ class AssignmentDAO:
                 """
                 params = (user_id, year, month)
             else:
+                # assignment.course_id references courses.course_id (external id)
+                # user_courses.course_id stores courses.id (auto-increment). Bridge via courses.
                 sql = """
                 SELECT COUNT(1) AS cnt
                 FROM assignment a
-                JOIN user_courses uc ON uc.course_id = a.course_id
+                JOIN courses c ON a.course_id = c.course_id
+                JOIN user_courses uc ON uc.course_id = c.id
                 WHERE uc.user_id = %s
                   AND a.status != 'completed'
                   AND YEAR(a.due_date) = %s
@@ -145,7 +148,8 @@ class AssignmentDAO:
             sql = f"""
                 SELECT a.`{pk}` AS assignment_id
                 FROM assignment a
-                JOIN user_courses uc ON uc.course_id = a.course_id
+                JOIN courses c ON a.course_id = c.course_id
+                JOIN user_courses uc ON uc.course_id = c.id
                 WHERE uc.user_id = %s
                   AND a.status != 'completed'
                   AND YEAR(a.due_date) = %s
@@ -161,8 +165,7 @@ class AssignmentDAO:
             if rowd and rowd.get('assignment_id') is not None:
                 return int(rowd['assignment_id'])
         return None
-    # python
-    # python
+
     def mark_complete(self, conn, assignment_id: int):
         """
         Debug variant: returns (updated: bool, rowcount: int, last_executed: Optional[str])
@@ -192,8 +195,6 @@ class AssignmentDAO:
             # many DB drivers expose the last executed SQL under different attributes
             last_executed = getattr(cur, "_last_executed", None) or getattr(cur, "last_executed", None)
             return (bool(rowcount and rowcount > 0), int(rowcount or 0), last_executed)
-
-    # 在 AssignmentDAO 类中添加以下方法
 
     def get_assignments_by_date_range(self, user_id: int, start_date: datetime, end_date: datetime) -> List[Dict]:
         """获取用户在指定时间范围内的作业"""
@@ -239,7 +240,7 @@ class AssignmentDAO:
                              c.course_name
                       FROM assignment a
                                LEFT JOIN courses c ON a.course_id = c.course_id
-                               JOIN user_courses uc ON uc.course_id = a.course_id
+                               JOIN user_courses uc ON uc.course_id = c.id
                       WHERE uc.user_id = %s
                         AND a.due_date BETWEEN %s AND %s
                       ORDER BY a.due_date \
@@ -299,7 +300,8 @@ class AssignmentDAO:
                 params = [user_id, assignment_type]
             else:
                 base_sql += """
-                    JOIN user_courses uc ON uc.course_id = a.course_id
+                    JOIN courses c2 ON a.course_id = c2.course_id
+                    JOIN user_courses uc ON uc.course_id = c2.id
                     WHERE uc.user_id = %s AND a.assignment_type = %s
                 """
                 params = [user_id, assignment_type]
@@ -332,8 +334,6 @@ class AssignmentDAO:
                 except Exception:
                     pass
 
-    # 在 AssignmentDAO 类中添加
-
     def get_assignment_progress_stats(self, user_id: int) -> Dict:
         """获取用户作业进度统计"""
         conn_candidate = self.get_connection()
@@ -359,7 +359,8 @@ class AssignmentDAO:
                              SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END)                           as completed, \
                              SUM(CASE WHEN a.status != 'completed' AND a.status IS NOT NULL THEN 1 ELSE 0 END) as pending
                       FROM assignment a
-                               JOIN user_courses uc ON a.course_id = uc.course_id
+                               JOIN courses c ON a.course_id = c.course_id
+                               JOIN user_courses uc ON uc.course_id = c.id
                       WHERE uc.user_id = %s \
                       """
                 params = (user_id,)
@@ -427,7 +428,7 @@ class AssignmentDAO:
                              c.course_name
                       FROM assignment a
                                LEFT JOIN courses c ON a.course_id = c.course_id
-                               JOIN user_courses uc ON uc.course_id = a.course_id
+                               JOIN user_courses uc ON uc.course_id = c.id
                       WHERE uc.user_id = %s
                         AND a.due_date BETWEEN %s AND %s
                         AND a.status != 'completed'
@@ -474,4 +475,125 @@ class AssignmentDAO:
         sql = f"UPDATE assignment SET status = %s WHERE `{pk}` = %s"
         with conn.cursor() as cur:
             cur.execute(sql, (status, assignment_id))
+            conn.commit()  # Add commit here
             return cur.rowcount > 0
+
+    # New convenience method that manages connection internally
+    def update_status_by_id(self, assignment_id: int, status: str) -> bool:
+        """Update assignment status using internal connection management."""
+        conn_candidate = self.get_connection()
+        is_ctx = self._is_context_manager(conn_candidate)
+
+        def _run(conn):
+            return self.update_status(conn, assignment_id, status)
+
+        if is_ctx:
+            with conn_candidate as conn:
+                return _run(conn)
+        else:
+            conn = conn_candidate
+            try:
+                return _run(conn)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # New convenience wrapper to mark as completed
+    def mark_complete_by_id(self, assignment_id: int) -> bool:
+        """Mark an assignment as completed. Returns True if updated."""
+        return self.update_status_by_id(assignment_id, 'completed')
+
+    # New convenience wrapper to mark as incomplete
+    def mark_incomplete_by_id(self, assignment_id: int) -> bool:
+        """Mark an assignment as incomplete. Returns True if updated."""
+        return self.update_status_by_id(assignment_id, 'pending')
+
+    # Reset all assignments to pending for testing
+    def reset_all_to_pending(self) -> int:
+        """Reset all assignments to pending status. Returns number of updated rows."""
+        conn_candidate = self.get_connection()
+        is_ctx = self._is_context_manager(conn_candidate)
+
+        def _run(conn):
+            cursor_args = (DictCursor,) if DictCursor else ()
+            sql = "UPDATE assignment SET status = 'pending'"
+            with conn.cursor(*cursor_args) as cur:
+                cur.execute(sql)
+                conn.commit()
+                return cur.rowcount
+
+        if is_ctx:
+            with conn_candidate as conn:
+                return _run(conn)
+        else:
+            conn = conn_candidate
+            try:
+                return _run(conn)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # New method to get pending assignments for a user
+    def get_pending_by_user(self, user_id: int) -> List[Dict]:
+        """Return pending (not completed) assignments for a user."""
+        conn_candidate = self.get_connection()
+        is_ctx = self._is_context_manager(conn_candidate)
+
+        def _run(conn):
+            cursor_args = (DictCursor,) if DictCursor else ()
+            has_user_id = self._has_column(conn, "user_id")
+
+            if has_user_id:
+                sql = """
+                    SELECT a.id, a.title, a.due_date, a.status, c.course_name
+                    FROM assignment a
+                             LEFT JOIN courses c ON a.course_id = c.course_id
+                    WHERE a.user_id = %s
+                      AND a.status != 'completed'
+                    ORDER BY a.due_date
+                """
+                params = (user_id,)
+            else:
+                sql = """
+                    SELECT a.id, a.title, a.due_date, a.status, c.course_name
+                    FROM assignment a
+                             LEFT JOIN courses c ON a.course_id = c.course_id
+                             JOIN user_courses uc ON uc.course_id = c.id
+                    WHERE uc.user_id = %s
+                      AND a.status != 'completed'
+                    ORDER BY a.due_date
+                """
+                params = (user_id,)
+
+            with conn.cursor(*cursor_args) as cur:
+                cur.execute(sql, params)
+                results = []
+                for row in cur.fetchall():
+                    row_dict = self._row_to_dict(cur, row)
+                    if row_dict:
+                        results.append({
+                            'id': row_dict.get('id'),
+                            'title': row_dict.get('title'),
+                            'due_date': row_dict.get('due_date').strftime('%Y-%m-%d %H:%M') if row_dict.get('due_date') else None,
+                            'course_name': row_dict.get('course_name'),
+                            'status': row_dict.get('status')
+                        })
+                return results
+
+        if is_ctx:
+            with conn_candidate as conn:
+                return _run(conn)
+        else:
+            conn = conn_candidate
+            try:
+                return _run(conn)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+

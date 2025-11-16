@@ -54,15 +54,15 @@ class UserCourseDAO:
     def get_course_progress(self, user_id: int) -> List[Dict]:
         """获取用户各课程进度"""
         sql = """
-              SELECT c.course_id, \
+              SELECT c.id as course_id, \
                      c.course_name, \
                      COUNT(a.id)                                             as total_assignments, \
                      SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed_assignments
               FROM user_courses uc
-                       JOIN courses c ON uc.course_id = c.course_id
+                       JOIN courses c ON uc.course_id = c.id
                        LEFT JOIN assignment a ON c.course_id = a.course_id
               WHERE uc.user_id = %s
-              GROUP BY c.course_id, c.course_name \
+              GROUP BY c.id, c.course_name \
               """
         try:
             with self.db_connector.get_connection() as conn:
@@ -91,12 +91,12 @@ class UserCourseDAO:
     def get_user_active_courses(self, user_id: int) -> List[Dict]:
         """获取用户当前活跃的课程"""
         sql = """
-              SELECT c.course_id, \
+              SELECT c.id as course_id, \
                      c.course_name, \
                      c.update_time_moodle, \
                      c.update_time_exambase
               FROM user_courses uc
-                       JOIN courses c ON uc.course_id = c.course_id
+                       JOIN courses c ON uc.course_id = c.id
               WHERE uc.user_id = %s
               ORDER BY c.course_name \
               """

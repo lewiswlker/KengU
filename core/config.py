@@ -14,10 +14,10 @@ class Settings(BaseSettings):
 
     # Database (defaults can be overridden in `.env`)
     DB_USER: str = "root"
-    DB_PASS: str = ""
+    DB_PASS: str = "123456"
     DB_HOST: str = "127.0.0.1"
     DB_PORT: int = 3306
-    DB_NAME: str = "kengu_db"
+    DB_NAME: str = "kengu"
     DB_DRIVER: str = "pymysql"
 
     def db_dsn(self) -> str:
