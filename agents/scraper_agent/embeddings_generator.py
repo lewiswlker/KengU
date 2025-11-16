@@ -22,7 +22,7 @@ class VectorEmbeddingsGenerator:
     # Supported file extensions
     SUPPORTED_EXTENSIONS = {'.pdf', '.txt', '.md', '.docx', '.pptx', '.html', '.htm'}
     
-    def __init__(self, base_url: str = "http://127.0.0.1:8009/"):
+    def __init__(self, base_url: str = "http://kengu-api.natapp1.cc/knowledge_base/"):
         """
         Initialize the embeddings generator
         
