@@ -1,37 +1,17 @@
-from typing import Any, TYPE_CHECKING
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
 
-if TYPE_CHECKING:
-    from sqlalchemy.engine import Engine  # type: ignore
-
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-
+class Settings:
     # LLM
-    LLM_API_KEY: str = ""
-    LLM_API_ENDPOINT: str = ""
-    LLM_MODEL_NAME: str = ""
+    LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
+    LLM_API_ENDPOINT: str = os.getenv("LLM_API_ENDPOINT", "")
+    LLM_MODEL_NAME: str = os.getenv("LLM_MODEL_NAME", "")
 
     # Database (defaults can be overridden in `.env`)
-    DB_USER: str = "root"
-    DB_PASS: str = "123456"
-    DB_HOST: str = "127.0.0.1"
-    DB_PORT: int = 3306
-    DB_NAME: str = "kengu"
-    DB_DRIVER: str = "pymysql"
-
-    def db_dsn(self) -> str:
-        return f"mysql+{self.DB_DRIVER}://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
-
-    def create_db_engine(self, **kwargs: Any) -> "Engine":
-        # import here to avoid requiring SQLAlchemy at module import time
-        from sqlalchemy import create_engine  # local import
-        return create_engine(self.db_dsn(), pool_pre_ping=True, **kwargs)
-
+    DB_USER: str = os.getenv("DB_USER", "root")
+    DB_PASS: str = os.getenv("DB_PASS", "123456")
+    DB_HOST: str = os.getenv("DB_HOST", "127.0.0.1")
+    DB_PORT: int = int(os.getenv("DB_PORT", "3306"))
+    DB_NAME: str = os.getenv("DB_NAME", "kengu")
+    DB_DRIVER: str = os.getenv("DB_DRIVER", "pymysql")
 
 settings = Settings()
-try:
-    db_engine = settings.create_db_engine()
-except Exception:
-    # If SQLAlchemy is not installed or connection fails, keep None so imports don't crash
-    db_engine = None

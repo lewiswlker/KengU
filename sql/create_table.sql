@@ -61,34 +61,3 @@ CREATE TABLE IF NOT EXISTS `study_sessions` (
   PRIMARY KEY (`session_id`),
   KEY `idx_study_sessions_assignment_id` (`assignment_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- Insert mock user
-INSERT INTO `users` (`user_email`, `pwd`) VALUES ('u3665467@connect.hku.hk', 'mock_password');
-
--- Insert mock courses
-INSERT INTO `courses` (`course_name`, `update_time_moodle`, `update_time_exambase`, `course_id`) VALUES
-('COMP7103 Data mining [Section 1C, 2025]', '2025-11-13 10:00:00', '2025-11-13 10:00:00', 127998),
-('COMP7104 Advanced database systems [Section 1A, 2025]', '2025-11-13 10:00:00', '2025-11-13 10:00:00', 128003),
-('COMP7607 Natural language processing [Section 1A, 2025]', '2025-11-13 10:00:00', '2025-11-13 10:00:00', 127958),
-('COMP7404 Computational intelligence and machine learning [Section 1A, 2025]', '2025-11-13 10:00:00', '2025-11-13 10:00:00', 128017);
-
--- Link user to courses (assuming user id is 1)
-INSERT INTO `user_courses` (`user_id`, `course_id`) VALUES
-(1, 127998),
-(1, 128003),
-(1, 127958),
-(1, 128017);
-
--- Insert mock assignments
-INSERT INTO `assignment` (`title`, `description`, `course_id`, `user_id`, `due_date`, `max_score`, `status`, `assignment_type`, `instructions`) VALUES
-('Assignment 1: Data Mining Basics', 'Complete the basic data mining exercises', 127998, 1, '2025-11-20 23:59:59', 100.00, 'pending', 'homework', 'Submit via Moodle'),
-('Project: Database Design', 'Design a database schema for a given scenario', 128003, 1, '2025-11-25 23:59:59', 150.00, 'pending', 'project', 'Include ER diagram and SQL scripts'),
-('NLP Homework 1', 'Implement basic tokenization and stemming', 127958, 1, '2025-11-18 23:59:59', 80.00, 'completed', 'homework', 'Use Python NLTK library'),
-('ML Quiz 1', 'Multiple choice questions on machine learning basics', 128017, 1, '2025-11-15 14:30:00', 50.00, 'completed', 'quiz', 'Online quiz on Moodle');
-
--- Insert mock study sessions
-INSERT INTO `study_sessions` (`assignment_id`, `start_time`, `duration_minutes`, `notes`) VALUES
-(1, '2025-11-13 09:00:00', 60, 'Studied data mining concepts'),
-(2, '2025-11-13 14:00:00', 90, 'Worked on database design'),
-(3, '2025-11-12 10:00:00', 45, 'Completed NLP homework'),
-(4, '2025-11-11 16:00:00', 30, 'Reviewed ML quiz questions');

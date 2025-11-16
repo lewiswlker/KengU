@@ -3,7 +3,7 @@ Course Data Access Object module
 """
 
 from datetime import datetime
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 from pymysql.err import ProgrammingError, IntegrityError
 from .connector import DBConnector
 
@@ -191,7 +191,7 @@ class CourseDAO:
                     return affected_rows > 0
         except ProgrammingError as e:
             raise RuntimeError(f"SQL execution error: {str(e)}") from e
-    # python
+
     def find_all(self) -> List[dict]:
         """
         Find all courses
@@ -228,4 +228,46 @@ class CourseDAO:
                     cursor.execute(sql, (course_id,))
                     return cursor.fetchone()
         except ProgrammingError as e:
+            raise RuntimeError(f"SQL execution error: {str(e)}") from e
+
+    def get_all_courses(self) -> List[Dict]:
+        """
+        Get all courses from database
+        :return: List of course dictionaries
+        """
+        sql = """
+            SELECT id, course_name, course_id, update_time_moodle, update_time_exambase
+            FROM courses
+            ORDER BY course_name
+        """
+        try:
+            with self.db_connector.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql)
+                    results = cursor.fetchall()
+                    return [dict(row) for row in results]
+        except ProgrammingError as e:
+            raise RuntimeError(f"SQL execution error: {str(e)}") from e
+
+    def get_user_courses(self, user_id: int) -> List[Dict[str, str]]:
+        """
+        Get courses for a specific user by joining user_courses and courses tables
+        :param user_id: User ID
+        :return: List of dicts with 'course_id' and 'course_name'
+        """
+        sql = """
+            SELECT c.course_id, c.course_name
+            FROM user_courses uc
+            JOIN courses c ON uc.course_id = c.id
+            WHERE uc.user_id = %s
+        """
+        try:
+            with self.db_connector.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(sql, (user_id,))
+                    results = cursor.fetchall()
+                    print(f"DAO: Queried courses for user {user_id}, found {len(results)} courses")
+                    return [{'course_id': row['course_id'], 'course_name': row['course_name']} for row in results]
+        except ProgrammingError as e:
+            print(f"DAO: SQL error querying courses for user {user_id}: {e}")
             raise RuntimeError(f"SQL execution error: {str(e)}") from e

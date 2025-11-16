@@ -653,3 +653,44 @@ class AssignmentDAO:
                 except Exception:
                     pass
 
+    # Insert assignment
+    def insert_assignment(self, assignment_data: Dict) -> bool:
+        """Insert a new assignment. Returns True if inserted."""
+        conn_candidate = self.get_connection()
+        is_ctx = self._is_context_manager(conn_candidate)
+
+        def _run(conn):
+            cursor_args = (DictCursor,) if DictCursor else ()
+            sql = """
+                INSERT INTO assignment 
+                (title, description, course_id, user_id, due_date, status, assignment_type, instructions, attachment_path)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            values = (
+                assignment_data.get('title'),
+                assignment_data.get('description'),
+                assignment_data.get('course_id'),
+                assignment_data.get('user_id'),
+                assignment_data.get('due_date'),
+                assignment_data.get('status', 'pending'),
+                assignment_data.get('assignment_type', 'homework'),
+                assignment_data.get('instructions'),
+                assignment_data.get('attachment_path')
+            )
+            with conn.cursor(*cursor_args) as cur:
+                cur.execute(sql, values)
+                conn.commit()
+                return cur.rowcount > 0
+
+        if is_ctx:
+            with conn_candidate as conn:
+                return _run(conn)
+        else:
+            conn = conn_candidate
+            try:
+                return _run(conn)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
