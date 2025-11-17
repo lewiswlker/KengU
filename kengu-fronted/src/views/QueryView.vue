@@ -6,35 +6,35 @@
       :percentage="progressPercent"
       :status="progressStatus"
       stroke-width="4"
-      style="position: fixed; top: 60px; left: 0; right: 0; z-index: 100; background: white; padding: 5px 20px;"
+      style="
+        position: fixed;
+        top: 60px;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        background: white;
+        padding: 5px 20px;
+      "
     >
       <template #default>
-        <span style="margin-right: 15px; font-size: 14px; font-weight: 500;">Loading course resources:</span>
-        <span style="margin-left: 10px; font-size: 14px;">{{ progressText }}</span>
+        <span style="margin-right: 15px; font-size: 14px; font-weight: 500"
+          >Loading course resources:</span
+        >
+        <span style="margin-left: 10px; font-size: 14px">{{
+          progressText
+        }}</span>
       </template>
     </el-progress>
 
     <el-header class="hku-header">
       <div class="header-left">
-        <el-button 
-          type="text" 
-          @click="goToQuery"
-          class="kengu-btn"
-        >
-        <img 
-          src="../assets/logo.png"
-          alt="KengU Logo" 
-          class="kengu-logo"
-        >
+        <el-button type="text" @click="goToQuery" class="kengu-btn">
+          <img src="../assets/logo.png" alt="KengU Logo" class="kengu-logo" />
           KengU
         </el-button>
       </div>
       <div class="header-nav">
-        <el-button 
-          type="text" 
-          @click="goToDashboard"
-          class="dashboard-btn"
-        >
+        <el-button type="text" @click="goToDashboard" class="dashboard-btn">
           Dashboard
         </el-button>
       </div>
@@ -42,13 +42,17 @@
         <el-dropdown trigger="click">
           <div class="user-info">
             <el-icon class="user-icon"><User /></el-icon>
-            <span class="user-name">{{ userStore.info?.name || userStore.email }}</span>
+            <span class="user-name">{{
+              userStore.info?.name || userStore.email
+            }}</span>
             <el-icon class="dropdown-icon"><ArrowDown /></el-icon>
           </div>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item @click="goToProfile">Profile</el-dropdown-item>
-              <el-dropdown-item divided @click="handleLogout">Logout</el-dropdown-item>
+              <el-dropdown-item divided @click="handleLogout"
+                >Logout</el-dropdown-item
+              >
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -67,14 +71,16 @@
             class="update-course-btn"
             :loading="isUpdateLoading"
           >
-            <el-icon v-if="isUpdateLoading" class="loading-icon"><Loading /></el-icon>
+            <el-icon v-if="isUpdateLoading" class="loading-icon"
+              ><Loading
+            /></el-icon>
             <el-icon v-else><Refresh /></el-icon>
             Load/Update all my course
           </el-button>
         </div>
         <el-scrollbar class="course-list">
-          <el-tag 
-            v-for="course in userStore.courses" 
+          <el-tag
+            v-for="course in userStore.courses"
             :key="course.id"
             class="course-tag"
             @click="addCourseReference(course)"
@@ -95,26 +101,36 @@
             <div v-if="chatHistory.length === 0" class="empty-answer">
               <p>Welcome to KengU. How can I help you?</p>
             </div>
-            
+
             <!-- 聊天消息列表 -->
             <div v-else class="chat-messages">
-              <div 
-                v-for="(msg, index) in chatHistory" 
+              <div
+                v-for="(msg, index) in chatHistory"
                 :key="index"
-                :class="['chat-message', msg.role === 'user' ? 'user-message' : 'ai-message']"
+                :class="[
+                  'chat-message',
+                  msg.role === 'user' ? 'user-message' : 'ai-message',
+                ]"
                 ref="messageRefs"
               >
                 <div class="message-role">
-                  {{ msg.role === 'user' ? 'You' : 'KengU Assistant' }}
+                  {{ msg.role === "user" ? "You" : "KengU Assistant" }}
                   <span class="message-time">{{ msg.time }}</span>
                 </div>
-                
+
                 <!-- RAG参考文本区域（优化版） -->
-                <div v-if="msg.role === 'assistant' && msg.ragTexts && msg.ragTexts.length" class="rag-container">
+                <div
+                  v-if="
+                    msg.role === 'assistant' &&
+                    msg.ragTexts &&
+                    msg.ragTexts.length
+                  "
+                  class="rag-container"
+                >
                   <!-- 折叠/展开按钮 -->
-                  <div 
-                    class="rag-toggle" 
-                    :class="{ 'expanded': isRagExpanded(index) }"
+                  <div
+                    class="rag-toggle"
+                    :class="{ expanded: isRagExpanded(index) }"
                     @click="toggleRagExpand(index)"
                   >
                     <span>
@@ -123,36 +139,43 @@
                     </span>
                     <el-icon class="rag-toggle-icon"><ArrowDown /></el-icon>
                   </div>
-                  
+
                   <!-- 参考文本内容（展开时显示） -->
-                  <div 
-                    class="rag-content" 
-                    v-show="isRagExpanded(index)"
-                  >
+                  <div class="rag-content" v-show="isRagExpanded(index)">
                     <div class="rag-content-header">
                       <el-icon class="thought-icon"><Search /></el-icon>
                       Detailed reference texts
                     </div>
-                    <div 
-                      v-for="(text, idx) in msg.ragTexts" 
-                      :key="idx" 
+                    <div
+                      v-for="(text, idx) in msg.ragTexts"
+                      :key="idx"
                       class="rag-item"
                       :data-index="idx + 1"
                     >
                       {{ text }}
                       <!-- 相关性分数标签 -->
-                      <span v-if="msg.sources[idx]?.relevance" class="rag-relevance">
-                        {{ (msg.sources[idx].relevance * 100).toFixed(0) }}% match
+                      <span
+                        v-if="msg.sources[idx]?.relevance"
+                        class="rag-relevance"
+                      >
+                        {{ (msg.sources[idx].relevance * 100).toFixed(0) }}%
+                        match
                       </span>
                     </div>
                   </div>
                 </div>
-                
+
                 <!-- AI 回答内容 -->
-                <div class="message-content" v-html="formatMessage(msg.content)"></div>
-                
+                <div
+                  class="message-content"
+                  v-html="formatMessage(msg.content)"
+                ></div>
+
                 <!-- 参考来源链接 -->
-                <div v-if="msg.role === 'assistant' && msg.sources?.length" class="message-sources">
+                <div
+                  v-if="msg.role === 'assistant' && msg.sources?.length"
+                  class="message-sources"
+                >
                   <h4>References:</h4>
                   <el-link
                     v-for="(source, idx) in msg.sources"
@@ -166,15 +189,25 @@
                   </el-link>
                 </div>
               </div>
-              
+
               <!-- AI 正在输入提示 -->
-              <div v-if="isGenerating" class="chat-message ai-message generating" ref="typingRef">
+              <div
+                v-if="isGenerating"
+                class="chat-message ai-message generating"
+                ref="typingRef"
+              >
                 <div class="message-role">
                   KengU Assistant
-                  <span class="message-time">{{ new Date().toLocaleString() }}</span>
+                  <span class="message-time">{{
+                    new Date().toLocaleString()
+                  }}</span>
                 </div>
-                <div class="message-content">
-                  {{ currentAiContent }}<span class="typing-dot">●</span>
+                <div class="message-content-wrapper">
+                  <div
+                    class="message-content"
+                    v-html="formatMessage(currentAiContent)"
+                  ></div>
+                  <span class="typing-dot">●</span>
                 </div>
               </div>
             </div>
@@ -184,10 +217,10 @@
         <!-- 右下角固定提问区域 -->
         <div class="fixed-input-container">
           <div class="reference-tags" v-if="selectedCourses.length > 0">
-            <el-tag 
-              v-for="course in selectedCourses" 
+            <el-tag
+              v-for="course in selectedCourses"
               :key="course.id"
-              closable 
+              closable
               type="info"
               @close="removeCourseReference(course.id)"
               class="course-reference-tag"
@@ -195,7 +228,7 @@
               {{ course.name }}
             </el-tag>
           </div>
-          
+
           <textarea
             v-model="question"
             rows="3"
@@ -204,31 +237,34 @@
             @keydown.enter.prevent="submitQuestion"
             :disabled="isLoading || isGenerating"
           ></textarea>
-          
+
           <div class="query-actions">
-            <el-button 
+            <el-button
               v-if="isGenerating"
-              type="text" 
+              type="text"
               @click="stopGeneration"
               class="stop-btn"
             >
               Stop
             </el-button>
-            <el-button 
+            <el-button
               v-else
-              type="text" 
+              type="text"
               @click="clearInput"
               class="clear-btn"
               :disabled="!question.trim() && selectedCourses.length === 0"
             >
               Clear
             </el-button>
-            
-            <el-button 
-              type="primary" 
+
+            <el-button
+              type="primary"
               @click="submitQuestion"
               :loading="isLoading || isGenerating"
-              :disabled="(!question.trim() && selectedCourses.length === 0) || isGenerating"
+              :disabled="
+                (!question.trim() && selectedCourses.length === 0) ||
+                isGenerating
+              "
               class="submit-btn"
             >
               <el-icon><Search /></el-icon>
@@ -242,372 +278,404 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
-import { useRouter } from 'vue-router'
-import { useUserStore } from '../stores/user'
-import { updateKnowledgeBase, getUpdateProgress } from '../services/api'
-import { User, ArrowDown, Search, Document, Refresh, Loading } from '@element-plus/icons-vue'
-import { ElMessageBox, ElMessage } from 'element-plus'
+import { ref, onMounted, onUnmounted, nextTick, computed } from "vue";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
+import { useRouter } from "vue-router";
+import { useUserStore } from "../stores/user";
+import { updateKnowledgeBase, getUpdateProgress } from "../services/api";
+import {
+  User,
+  ArrowDown,
+  Search,
+  Document,
+  Refresh,
+  Loading,
+} from "@element-plus/icons-vue";
+import { ElMessageBox, ElMessage } from "element-plus";
 
-const userStore = useUserStore()
-const router = useRouter()
+const userStore = useUserStore();
+const router = useRouter();
 
 // 核心状态
-const question = ref('')
-const isLoading = ref(false)
-const isGenerating = ref(false)
-const chatHistory = ref([])
-const currentAiContent = ref('')
-const isUpdateLoading = ref(false)
-const abortController = ref(null)
-const selectedCourses = ref([])
-const updatePollInterval = ref(null)
+const question = ref("");
+const isLoading = ref(false);
+const isGenerating = ref(false);
+const chatHistory = ref([]);
+const currentAiContent = ref("");
+const isUpdateLoading = ref(false);
+const abortController = ref(null);
+const selectedCourses = ref([]);
+const updatePollInterval = ref(null);
 
 // 折叠状态管理（存储当前展开的面板索引）
-const activeRagCollapse = ref('')
+const activeRagCollapse = ref("");
 
 // 进度条相关状态
-const showProgress = ref(false)
-const progressPercent = ref(0)
-const progressText = ref('Ready to update...')
+const showProgress = ref(false);
+const progressPercent = ref(0);
+const progressText = ref("Ready to update...");
 const progressStatus = computed(() => {
-  if (progressText.value.includes('Fail')) return 'exception'
-  if (progressPercent.value === 100) return 'success'
-  return 'active'
-})
+  if (progressText.value.includes("Fail")) return "exception";
+  if (progressPercent.value === 100) return "success";
+  return "active";
+});
 
 // DOM引用
-const messageRefs = ref([])
-const typingRef = ref(null)
+const messageRefs = ref([]);
+const typingRef = ref(null);
 
 // 判断指定索引的RAG面板是否展开
 const isRagExpanded = (index) => {
-  return activeRagCollapse.value === `rag-${index}`
-}
+  return activeRagCollapse.value === `rag-${index}`;
+};
 
 // 切换RAG面板展开/折叠状态
 const toggleRagExpand = (index) => {
   if (isRagExpanded(index)) {
-    activeRagCollapse.value = ''  // 收起
+    activeRagCollapse.value = ""; // 收起
   } else {
-    activeRagCollapse.value = `rag-${index}`  // 展开
+    activeRagCollapse.value = `rag-${index}`; // 展开
   }
-}
+};
 
 // 滚动到最新消息
 const scrollToLatest = async () => {
-  await nextTick()
+  await nextTick();
   if (isGenerating.value && typingRef.value) {
-    typingRef.value.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    typingRef.value.scrollIntoView({ behavior: "smooth", block: "end" });
   } else if (messageRefs.value.length > 0) {
-    messageRefs.value[messageRefs.value.length - 1].scrollIntoView({ behavior: 'smooth', block: 'end' })
+    messageRefs.value[messageRefs.value.length - 1].scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
   }
-}
+};
 
 // 课程引用相关方法
 const addCourseReference = (course) => {
-  const isAlreadySelected = selectedCourses.value.some(item => item.id === course.id)
+  const isAlreadySelected = selectedCourses.value.some(
+    (item) => item.id === course.id
+  );
   if (!isAlreadySelected) {
-    selectedCourses.value.push(course)
+    selectedCourses.value.push(course);
   }
-}
+};
 
 const removeCourseReference = (courseId) => {
-  selectedCourses.value = selectedCourses.value.filter(course => course.id !== courseId)
-}
+  selectedCourses.value = selectedCourses.value.filter(
+    (course) => course.id !== courseId
+  );
+};
 
 const isCourseSelected = (courseId) => {
-  return selectedCourses.value.some(course => course.id === courseId)
-}
+  return selectedCourses.value.some((course) => course.id === courseId);
+};
 
 // 导航方法
-const goToQuery = () => router.push('/query')
-const goToDashboard = () => router.push('/dashboard')
-const goToProfile = () => router.push('/profile')
+const goToQuery = () => router.push("/query");
+const goToDashboard = () => router.push("/dashboard");
+const goToProfile = () => router.push("/profile");
 
 // 页面初始化
 onMounted(async () => {
   if (!userStore.email) {
-    router.push('/')
-    return
+    router.push("/");
+    return;
   }
   if (userStore.courses.length === 0) {
-    await userStore.loadCourses()
+    await userStore.loadCourses();
   }
-  handleUpdateAllCourses()
-})
+  handleUpdateAllCourses();
+});
 
 // 组件卸载清理
 onUnmounted(() => {
-  if (abortController.value) abortController.value.abort()
-  if (updatePollInterval.value) clearInterval(updatePollInterval.value)
-})
+  if (abortController.value) abortController.value.abort();
+  if (updatePollInterval.value) clearInterval(updatePollInterval.value);
+});
 
 // 清空输入
 const clearInput = () => {
-  question.value = ''
-  selectedCourses.value = []
-}
+  question.value = "";
+  selectedCourses.value = [];
+};
 
-// 格式化消息
+// 格式化消息（支持 Markdown）
 const formatMessage = (content) => {
-  return content.replace(/\n/g, '<br/>')
-}
+  if (!content) return "";
+  try {
+    const rawHtml = marked.parse(content);
+    // Sanitize to prevent XSS
+    return DOMPurify.sanitize(rawHtml);
+  } catch (e) {
+    // Fallback: preserve simple line breaks
+    return content.replace(/\n/g, "<br/>");
+  }
+};
 
 // 终止生成
 const stopGeneration = () => {
   if (abortController.value) {
-    abortController.value.abort()
-    console.log('Answer manually terminated')
-    
-    let finalContent = currentAiContent.value
-    const currentRagTexts = []
+    abortController.value.abort();
+    console.log("Answer manually terminated");
+
+    let finalContent = currentAiContent.value;
+    const currentRagTexts = [];
     if (window.currentRetrievalSources?.length) {
-      currentRagTexts.push(...window.currentRetrievalSources.map(s => s.text))
+      currentRagTexts.push(
+        ...window.currentRetrievalSources.map((s) => s.text)
+      );
     }
-    
+
     if (finalContent.trim()) {
       chatHistory.value.push({
-        role: 'assistant',
+        role: "assistant",
         content: finalContent,
         time: new Date().toLocaleString(),
         sources: window.currentRetrievalSources || [],
-        ragTexts: currentRagTexts
-      })
+        ragTexts: currentRagTexts,
+      });
     }
-    
-    isGenerating.value = false
-    currentAiContent.value = ''
-    window.currentRetrievalSources = []
-    scrollToLatest()
-    ElMessage.info('Answer generation terminated')
+
+    isGenerating.value = false;
+    currentAiContent.value = "";
+    window.currentRetrievalSources = [];
+    scrollToLatest();
+    ElMessage.info("Answer generation terminated");
   }
-}
+};
 
 // 请求接口
 const fetchAskQuestion = (user_request, user_id, email, messages) => {
-  const backendURL = window.location.hostname.includes('natapp')
-    ? 'http://kengu-api.natapp1.cc/api/chat/stream'
-    : 'http://localhost:8009/api/chat/stream'
-  
+  const backendURL = window.location.hostname.includes("natapp")
+    ? "http://kengu-api.natapp1.cc/api/chat/stream"
+    : "http://localhost:8009/api/chat/stream";
+
   return fetch(backendURL, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'text/event-stream'
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
     },
     body: JSON.stringify({
       user_request,
       user_id: user_id ? Number(user_id) : null,
       user_email: email,
       messages,
-      selected_course_ids: selectedCourses.value.map(c => c.id)
+      selected_course_ids: selectedCourses.value.map((c) => c.id),
     }),
-    signal: abortController.value?.signal
-  })
-}
+    signal: abortController.value?.signal,
+  });
+};
 
 // 提交问题
 const submitQuestion = async () => {
-  let finalQuestion = question.value.trim()
+  let finalQuestion = question.value.trim();
   if (selectedCourses.value.length > 0) {
-    const courseNames = selectedCourses.value.map(c => c.name).join('、')
-    finalQuestion = `[Courses: ${courseNames}] ${finalQuestion}`
+    const courseNames = selectedCourses.value.map((c) => c.name).join("、");
+    finalQuestion = `[Courses: ${courseNames}] ${finalQuestion}`;
   }
 
-  if (!finalQuestion) return
+  if (!finalQuestion) return;
 
-  window.currentRetrievalSources = []
+  window.currentRetrievalSources = [];
 
   const userMsg = {
-    role: 'user',
+    role: "user",
     content: finalQuestion,
-    time: new Date().toLocaleString()
-  }
-  chatHistory.value.push(userMsg)
-  question.value = ''
-  selectedCourses.value = []
-  isGenerating.value = true
-  currentAiContent.value = ''
+    time: new Date().toLocaleString(),
+  };
+  chatHistory.value.push(userMsg);
+  question.value = "";
+  selectedCourses.value = [];
+  isGenerating.value = true;
+  currentAiContent.value = "";
 
-  const messagesParams = chatHistory.value.map(msg => ({
+  const messagesParams = chatHistory.value.map((msg) => ({
     role: msg.role,
-    content: msg.content
-  }))
+    content: msg.content,
+  }));
 
   try {
-    abortController.value = new AbortController()
+    abortController.value = new AbortController();
     const response = await fetchAskQuestion(
       finalQuestion,
       userStore.id,
       userStore.email,
       messagesParams
-    )
+    );
 
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-    if (!response.body || typeof response.body.getReader !== 'function') {
-      throw new Error('The backend did not return a valid streaming response')
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    if (!response.body || typeof response.body.getReader !== "function") {
+      throw new Error("The backend did not return a valid streaming response");
     }
 
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder('utf-8')
-    let buffer = ''
-    let isStreaming = true
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let isStreaming = true;
 
     while (isStreaming) {
-      const { done, value } = await reader.read()
-      if (done) break
+      const { done, value } = await reader.read();
+      if (done) break;
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n\n')
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
       for (const line of lines) {
-        if (line.startsWith('data: ') && line.trim() !== 'data: ') {
+        if (line.startsWith("data: ") && line.trim() !== "data: ") {
           try {
-            const dataStr = line.slice(6)
-            const { chunk } = JSON.parse(dataStr)
-            
-            if (chunk.startsWith('__SOURCES__:') && chunk.includes('__END_SOURCES__')) {
-              const sourcesJson = chunk.replace('__SOURCES__:', '').replace('__END_SOURCES__', '')
+            const dataStr = line.slice(6);
+            const { chunk } = JSON.parse(dataStr);
+
+            if (
+              chunk.startsWith("__SOURCES__:") &&
+              chunk.includes("__END_SOURCES__")
+            ) {
+              const sourcesJson = chunk
+                .replace("__SOURCES__:", "")
+                .replace("__END_SOURCES__", "");
               try {
-                const sources = JSON.parse(sourcesJson)
-                window.currentRetrievalSources = sources.map(s => ({
-                  name: s.title || 'Unknown sources',
-                  url: s.source_url || '#',
+                const sources = JSON.parse(sourcesJson);
+                window.currentRetrievalSources = sources.map((s) => ({
+                  name: s.title || "Unknown sources",
+                  url: s.source_url || "#",
                   relevance: s.relevance_score || 0,
-                  text: s.text || ''
-                }))
+                  text: s.text || "",
+                }));
               } catch (e) {
-                console.error('Failed to parse source data:', e)
+                console.error("Failed to parse source data:", e);
               }
             } else {
-              currentAiContent.value += chunk
-              await nextTick()
-              scrollToLatest()
+              currentAiContent.value += chunk;
+              await nextTick();
+              scrollToLatest();
             }
           } catch (e) {
-            console.error('Failed to parse streaming data:', e)
+            console.error("Failed to parse streaming data:", e);
           }
         }
       }
-      buffer = lines[lines.length - 1] || ''
+      buffer = lines[lines.length - 1] || "";
     }
 
-    isGenerating.value = false
+    isGenerating.value = false;
     if (currentAiContent.value) {
-      const ragTexts = window.currentRetrievalSources.map(s => s.text).filter(Boolean)
-      
+      const ragTexts = window.currentRetrievalSources
+        .map((s) => s.text)
+        .filter(Boolean);
+
       chatHistory.value.push({
-        role: 'assistant',
+        role: "assistant",
         content: currentAiContent.value,
         time: new Date().toLocaleString(),
         sources: window.currentRetrievalSources || [],
-        ragTexts: ragTexts
-      })
-      
-      currentAiContent.value = ''
-      window.currentRetrievalSources = []
-      await nextTick()
-      scrollToLatest()
-    }
+        ragTexts: ragTexts,
+      });
 
-  } catch (error) {
-    isGenerating.value = false
-    if (error.name !== 'AbortError') {
-      console.error('Failed to submit the question', error)
-      ElMessage.error('Query failed. Please try again!')
-      chatHistory.value.pop()
+      currentAiContent.value = "";
+      window.currentRetrievalSources = [];
+      await nextTick();
+      scrollToLatest();
     }
-    window.currentRetrievalSources = []
+  } catch (error) {
+    isGenerating.value = false;
+    if (error.name !== "AbortError") {
+      console.error("Failed to submit the question", error);
+      ElMessage.error("Query failed. Please try again!");
+      chatHistory.value.pop();
+    }
+    window.currentRetrievalSources = [];
   } finally {
-    abortController.value = null
+    abortController.value = null;
   }
-}
+};
 
 // 退出登录
 const handleLogout = () => {
-  ElMessageBox.confirm(
-    'Are you sure to logout?', 
-    'Confirmation', 
-    {
-      confirmButtonText: 'Yes',
-      cancelButtonText: 'Cancel',
-      type: 'warning',
-      customClass: 'custom-logout-box'
-    }
-  )
-  .then(() => {
-    userStore.logout();
-    router.push('/');
+  ElMessageBox.confirm("Are you sure to logout?", "Confirmation", {
+    confirmButtonText: "Yes",
+    cancelButtonText: "Cancel",
+    type: "warning",
+    customClass: "custom-logout-box",
   })
-  .catch(() => {
-    // 取消退出逻辑
-  });
-}
+    .then(() => {
+      userStore.logout();
+      router.push("/");
+    })
+    .catch(() => {
+      // 取消退出逻辑
+    });
+};
 
 // 更新课程
 const handleUpdateAllCourses = async () => {
   if (!userStore.email || !userStore.password) {
-    ElMessage.warning('Please login first')
-    router.push('/')
-    return
+    ElMessage.warning("Please login first");
+    router.push("/");
+    return;
   }
 
-  if (isUpdateLoading.value) return
+  if (isUpdateLoading.value) return;
 
-  showProgress.value = true
-  progressPercent.value = 0
-  progressText.value = 'Starting the update task...'
-  isUpdateLoading.value = true
+  showProgress.value = true;
+  progressPercent.value = 0;
+  progressText.value = "Starting the update task...";
+  isUpdateLoading.value = true;
 
   try {
     const startRes = await updateKnowledgeBase(
-      userStore.email, 
-      userStore.password, 
+      userStore.email,
+      userStore.password,
       userStore.id
-    )
+    );
 
     if (!startRes.success || !startRes.task_id) {
-      throw new Error(startRes.error || 'Failed to start the update task')
+      throw new Error(startRes.error || "Failed to start the update task");
     }
-    const taskId = startRes.task_id
+    const taskId = startRes.task_id;
 
-    if (updatePollInterval.value) clearInterval(updatePollInterval.value)
+    if (updatePollInterval.value) clearInterval(updatePollInterval.value);
 
     updatePollInterval.value = setInterval(async () => {
       try {
-        const progressRes = await getUpdateProgress(taskId)
-        
+        const progressRes = await getUpdateProgress(taskId);
+
         if (progressRes.completed) {
-          clearInterval(updatePollInterval.value)
-          progressPercent.value = 100
-          progressText.value = 'Update completed!'
-          await userStore.loadCourses()
-          setTimeout(() => showProgress.value = false, 2000)
+          clearInterval(updatePollInterval.value);
+          progressPercent.value = 100;
+          progressText.value = "Update completed!";
+          await userStore.loadCourses();
+          setTimeout(() => (showProgress.value = false), 2000);
         } else if (progressRes.failed) {
-          clearInterval(updatePollInterval.value)
-          progressText.value = `Updating Falied:${progressRes.error || 'Unknown'}`
-          ElMessage.error(progressRes.error || 'An error occurred during the update')
-          setTimeout(() => showProgress.value = false, 3000)
+          clearInterval(updatePollInterval.value);
+          progressText.value = `Updating Falied:${
+            progressRes.error || "Unknown"
+          }`;
+          ElMessage.error(
+            progressRes.error || "An error occurred during the update"
+          );
+          setTimeout(() => (showProgress.value = false), 3000);
         } else {
-          progressPercent.value = progressRes.percent || 0
-          progressText.value = progressRes.status || `Updating(${progressRes.percent || 0}%)`
+          progressPercent.value = progressRes.percent || 0;
+          progressText.value =
+            progressRes.status || `Updating(${progressRes.percent || 0}%)`;
         }
       } catch (e) {
-        clearInterval(updatePollInterval.value)
-        progressText.value = `Failed to query progress:${e.message}`
-        setTimeout(() => showProgress.value = false, 3000)
+        clearInterval(updatePollInterval.value);
+        progressText.value = `Failed to query progress:${e.message}`;
+        setTimeout(() => (showProgress.value = false), 3000);
       }
-    }, 1000)
-
+    }, 1000);
   } catch (error) {
-    console.error('Failed to update', error)
-    progressText.value = `Failed to start:${error.message}`
-    ElMessage.error(error.message || 'Network error')
-    setTimeout(() => showProgress.value = false, 3000)
+    console.error("Failed to update", error);
+    progressText.value = `Failed to start:${error.message}`;
+    ElMessage.error(error.message || "Network error");
+    setTimeout(() => (showProgress.value = false), 3000);
   } finally {
-    isUpdateLoading.value = false
+    isUpdateLoading.value = false;
   }
-}
+};
 </script>
 
 <style scoped>
@@ -642,14 +710,14 @@ const handleUpdateAllCourses = async () => {
   background-color: transparent;
 }
 .kengu-logo {
-  width: 40px;           /* 建议稍大于文字高度，视觉更协调 */
+  width: 40px; /* 建议稍大于文字高度，视觉更协调 */
   height: 40px;
-  object-fit: contain;   /* 保持图片比例，避免变形 */
-  border-radius: 4px;    /* 可选：轻微圆角，柔和边缘 */
+  object-fit: contain; /* 保持图片比例，避免变形 */
+  border-radius: 4px; /* 可选：轻微圆角，柔和边缘 */
 }
 
 .kengu-btn:hover .kengu-logo {
-  opacity: 0.9;          /* 图片hover时稍暗，增强反馈 */
+  opacity: 0.9; /* 图片hover时稍暗，增强反馈 */
 }
 
 .header-nav {
@@ -691,7 +759,6 @@ const handleUpdateAllCourses = async () => {
 .dropdown-icon {
   font-size: 16px;
 }
-
 
 .main-wrapper {
   display: flex;
@@ -896,7 +963,7 @@ const handleUpdateAllCourses = async () => {
 }
 
 ::v-deep .message-sources .source-link a:hover {
-  text-decoration: none !important; 
+  text-decoration: none !important;
 }
 
 ::v-deep .source-link {
@@ -1177,6 +1244,129 @@ const handleUpdateAllCourses = async () => {
   border-top-color: #eee !important;
 }
 
+::v-deep .message-content {
+  /* 确保内容块有足够间距 */
+  line-height: 1.8;
+}
+
+/* 1. 标题样式（h1-h6） */
+::v-deep .message-content h1 {
+  font-size: 22px;
+  margin: 16px 0 8px;
+  font-weight: 600;
+  border-bottom: 1px solid #eaecef;
+  padding-bottom: 4px;
+}
+::v-deep .message-content h2 {
+  font-size: 20px;
+  margin: 14px 0 6px;
+  font-weight: 600;
+}
+::v-deep .message-content h3 {
+  font-size: 18px;
+  margin: 12px 0 4px;
+  font-weight: 600;
+}
+::v-deep .message-content h4,
+::v-deep .message-content h5,
+::v-deep .message-content h6 {
+  font-size: 16px;
+  margin: 10px 0 2px;
+  font-weight: 600;
+}
+
+/* 2. 段落与换行 */
+::v-deep .message-content p {
+  margin: 10px 0;
+}
+
+/* 3. 列表（有序/无序） */
+::v-deep .message-content ul,
+::v-deep .message-content ol {
+  margin: 10px 0 10px 24px;
+  padding: 0;
+}
+::v-deep .message-content li {
+  margin: 6px 0;
+  line-height: 1.6;
+}
+/* 有序列表数字颜色 */
+::v-deep .message-content ol li::marker {
+  font-weight: 500;
+}
+
+/* 4. 链接样式 */
+::v-deep .message-content a {
+  color: #0a4a1f;
+  text-decoration: underline;
+  padding: 0 2px;
+  border-radius: 2px;
+  transition: all 0.2s;
+}
+::v-deep .message-content a:hover {
+  color: #073416;
+  background-color: rgba(10, 74, 31, 0.05);
+  text-decoration: none;
+}
+
+/* 5. 代码块与行内代码 */
+/* 行内代码 */
+::v-deep .message-content code {
+  background-color: #f5f7fa;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: monospace;
+}
+/* 代码块 */
+::v-deep .message-content pre {
+  background-color: #f5f7fa;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+::v-deep .message-content pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 13px;
+}
+
+/* 6. 引用块 */
+::v-deep .message-content blockquote {
+  border-left: 3px solid #0a4a1f;
+  padding: 8px 12px 8px 16px;
+  margin: 12px 0;
+  background-color: rgba(10, 74, 31, 0.03);
+  color: #555;
+  border-radius: 0 4px 4px 0;
+}
+
+/* 7. 分隔线 */
+::v-deep .message-content hr {
+  border: none;
+  border-top: 1px dashed #eaecef;
+  margin: 16px 0;
+}
+
+/* 8. 表格（如果需要支持） */
+::v-deep .message-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+}
+::v-deep .message-content th,
+::v-deep .message-content td {
+  border: 1px solid #eaecef;
+  padding: 8px 12px;
+  text-align: left;
+}
+::v-deep .message-content th {
+  background-color: rgba(10, 74, 31, 0.05);
+  font-weight: 600;
+}
+
 @media (max-width: 768px) {
   .kengu-logo {
     width: 40px;
@@ -1233,5 +1423,4 @@ const handleUpdateAllCourses = async () => {
   border-color: #ccc !important;
   color: #333 !important;
 }
-
 </style>

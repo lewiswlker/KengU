@@ -6,7 +6,7 @@ from agents.llm import LLM
 from agents.planner_agent import LLMConfig
 from agents.rag_agent import answer_with_rag
 from dao.user import UserDAO
-from models import ProgressQuery, ProgressResult
+from models import ChatInput, ChatResult
 from rag_scraper.scraper import RAGScraper
 
 
@@ -19,6 +19,36 @@ class ChatAgent:
             "scraper": None,
             "rag": None,
         }
+        self.system_prompt = """You are KengU, an intelligent academic assistant designed to help students manage their coursework and learning.
+
+When responding to user queries:
+
+1. **Use Retrieved Information**: If retrieval results are provided in the context, base your answer primarily on this information. Always cite sources when using retrieved content.
+
+2. **Cite References**: When referencing information from retrieved documents, mention the source explicitly:
+   - Example: "According to the course materials from COMP3230..."
+   - Example: "Based on the assignment description..."
+   - Example: "The lecture notes indicate that..."
+
+3. **Structured Responses**: Organize your responses clearly:
+   - For assignment queries: List assignments with deadlines and requirements
+   - For concept explanations: Provide clear, step-by-step explanations
+   - For planning requests: Create actionable study plans with timelines
+   - For progress tracking: Summarize completion status and upcoming tasks
+
+4. **Handle Missing Information**: If retrieved information is insufficient:
+   - Acknowledge what information is available
+   - Clearly state what information is missing
+   - Suggest how the user might obtain the missing information
+
+5. **Multi-Agent Results**: When multiple agents provide information:
+   - Synthesize results from different sources coherently
+   - Highlight connections between different pieces of information
+   - Provide a comprehensive answer that addresses all aspects of the query
+
+6. **Maintain Context**: Reference previous conversation history when relevant to provide continuity.
+
+7. **Be Concise**: Provide comprehensive but focused answers. Avoid unnecessary verbosity while ensuring clarity."""
 
     def _initialize_scraper(self, email: str, password: str):
         """Initialize RAGScraper with user credentials"""
@@ -52,6 +82,7 @@ class ChatAgent:
 
         # Route to determine which agents to use
         agent_types = await self.llm.route(user_request)
+        print("Routed agent types:", agent_types)
         if not agent_types:
             yield "无法确定合适的代理类型。"
             return
@@ -59,9 +90,8 @@ class ChatAgent:
         # Collect agent tasks
         agent_tasks = []
         rag_retrieval_results = None  # Store RAG retrieval results
-        
+
         for agent_type in agent_types:
-            agent_type = AgentType.RAG
             if agent_type == AgentType.SCRAPER:
                 agent_tasks.append(
                     asyncio.create_task(self._handle_scraper_agent(user_id=user_id, user_email=user_email))
@@ -69,8 +99,21 @@ class ChatAgent:
             elif agent_type == AgentType.PLANNER:
                 agent_tasks.append(asyncio.create_task(self._handle_planner_agent(user_request, user_id=user_id)))
             elif agent_type == AgentType.RAG:
-                agent_tasks.append(asyncio.create_task(self._handle_rag_agent(user_request, user_id=user_id, selected_course_ids=selected_course_ids)))
+                agent_tasks.append(
+                    asyncio.create_task(
+                        self._handle_rag_agent(user_request, user_id=user_id, selected_course_ids=selected_course_ids)
+                    )
+                )
             # AgentType.GENERAL doesn't need a specific handler
+        
+        # Add system prompt at the beginning
+        messages.insert(
+            0,
+            {
+                "role": "system",
+                "content": self.system_prompt,
+            },
+        )
 
         # Execute all agent tasks concurrently
         if agent_tasks:
@@ -84,22 +127,18 @@ class ChatAgent:
                         # Handle exceptions from agent tasks
                         yield f"Agent {agent_types[i]} 执行失败: {str(result)}\n"
                     elif result is not None:
-                        # Extract RAG retrieval results if this is RAG agent
-                        print("Aaaaaaaaaaaa",agent_types[i],result)
-                        agent_types[i] = AgentType.RAG
-                        if agent_types[i] == AgentType.RAG and isinstance(result, dict):
-                            rag_data = result.get('data', {})
-                            print("Bbbbbbbbbaaaaaa",rag_data)
-                            if rag_data.get('retrieval_results'):
-                                rag_retrieval_results = rag_data['retrieval_results']
-                        
                         # Add successful agent results to context
                         if isinstance(result, dict):
                             # Structured result
+                            if agent_types[i] == AgentType.RAG and isinstance(result, dict):
+                                rag_data = result.get("data", {})
+                                print("Bbbbbbbbbaaaaaa", rag_data)
+                                if rag_data.get("retrieval_results"):
+                                    rag_retrieval_results = rag_data["retrieval_results"]
                             messages.append(
                                 {
                                     "role": "system",
-                                    "content": f"Agent {agent_types[i]} 结果: {result.get('summary', str(result))}",
+                                    "content": f"Agent {agent_types[i]} Return: {result.get('summary', str(result))}",
                                 }
                             )
                         else:
@@ -107,18 +146,19 @@ class ChatAgent:
                             messages.append(
                                 {
                                     "role": "system",
-                                    "content": f"Agent {agent_types[i]} 结果: {str(result)}",
+                                    "content": f"Agent {agent_types[i]} Return: {str(result)}",
                                 }
                             )
             except Exception as e:
                 yield f"执行代理任务时出错: {str(e)}"
                 return
-        
+        print("qwert",messages)
         # Send retrieval results first (before LLM response)
         if rag_retrieval_results:
-            print("aaaaaaaaaaaaaaaaaaaa",rag_retrieval_results)
+            print("aaaaaaaaaaaaaaaaaaaa", rag_retrieval_results)
             import json
             from dataclasses import asdict
+
             sources = [asdict(result) for result in rag_retrieval_results]
             yield f"__SOURCES__:{json.dumps(sources, ensure_ascii=False)}__END_SOURCES__"
 
@@ -180,74 +220,21 @@ class ChatAgent:
             api_key=settings.LLM_API_KEY,
         )
         planner_agent = PlannerAgent(llm_config=llm_config)
-        progress_query = ProgressQuery(user_id=user_id)
-        progress_result: ProgressResult = await asyncio.to_thread(planner_agent.progress, query=progress_query)
-
-        # Convert ProgressResult to readable text summary
-        summary_text = "学习进度统计:\n"
-        summary_text += f"- 已完成: {progress_result.completed} 个任务\n"
-        summary_text += f"- 待完成: {progress_result.pending} 个任务\n"
-        summary_text += f"- 总计: {progress_result.total} 个任务\n"
-
-        if progress_result.details:
-            for detail in progress_result.details:
-                detail_type = detail.get("type")
-
-                if detail_type == "overall_stats":
-                    completion_rate = detail.get("completion_rate", 0)
-                    summary_text += f"- 完成率: {completion_rate}%\n"
-
-                elif detail_type == "study_activity":
-                    total_sessions = detail.get("total_sessions", 0)
-                    total_hours = detail.get("total_study_hours", 0)
-                    avg_minutes = detail.get("average_session_minutes", 0)
-                    active_days = detail.get("active_days", 0)
-                    period_days = detail.get("period_days", 0)
-
-                    summary_text += "\n学习活动统计:\n"
-                    summary_text += f"- 总学习时长: {total_hours} 小时\n"
-                    summary_text += f"- 学习场次: {total_sessions} 次\n"
-                    summary_text += f"- 平均每次: {avg_minutes} 分钟\n"
-                    summary_text += f"- 活跃天数: {active_days}/{period_days} 天\n"
-
-                elif detail_type == "course_progress":
-                    total_courses = detail.get("total_courses", 0)
-                    courses = detail.get("courses", [])
-                    summary_text += f"\n课程进度 ({total_courses}门课程):\n"
-                    for course in courses:
-                        course_name = course.get("course_name", "未知课程")
-                        progress = course.get("progress", 0)
-                        summary_text += f"- {course_name}: {progress}%\n"
-
-                elif detail_type == "upcoming_assignments":
-                    count = detail.get("count", 0)
-                    assignments = detail.get("assignments", [])
-                    if count > 0:
-                        summary_text += f"\n近期待办作业 ({count}个):\n"
-                        for assignment in assignments:
-                            title = assignment.get("title", "未知作业")
-                            due_date = assignment.get("due_date", "无截止日期")
-                            summary_text += f"- {title} (截止: {due_date})\n"
-
-                elif detail_type == "suggestions":
-                    recommendations = detail.get("recommendations", [])
-                    if recommendations:
-                        summary_text += "\n学习建议:\n"
-                        for suggestion in recommendations:
-                            summary_text += f"- {suggestion}\n"
-
+        try:
+            chat_result: ChatResult = await asyncio.to_thread(
+                planner_agent.chat, ChatInput(message=user_request, user_id=user_id)
+            )
+        except Exception as e:
+            return {"success": False, "error": f"与规划代理聊天时出错: {str(e)}"}
         return {
             "success": True,
-            "data": progress_result,
-            "summary": summary_text.strip(),
+            "data": chat_result,
+            "summary": chat_result.reply.strip(),
         }
 
     async def _handle_rag_agent(
-        self, 
-        user_request: str, 
-        user_id: int | None = None, 
-        selected_course_ids: list[int] | None = None
-        ) -> dict | None:
+        self, user_request: str, user_id: int | None = None, selected_course_ids: list[int] | None = None
+    ) -> dict | None:
         """
         Handle requests routed to the RAG agent
 
@@ -262,10 +249,7 @@ class ChatAgent:
 
         try:
             rag_result = await asyncio.to_thread(
-                answer_with_rag,
-                query=user_request,
-                user_id=user_id,
-                selected_course_ids=selected_course_ids
+                answer_with_rag, query=user_request, user_id=user_id, selected_course_ids=selected_course_ids
             )
 
             # Structure retrieval results for context
