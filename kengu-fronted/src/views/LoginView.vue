@@ -48,6 +48,10 @@
           >
             Log In
           </el-button>
+          <!-- 登录提示文字：登录流程（含初始化）完成前显示 -->
+          <p v-if="showLoginHint" class="login-hint">
+            The first log in may take some time, please wait for a while
+          </p>
         </el-form-item>
       </el-form>
     </el-card>
@@ -105,6 +109,7 @@ import { ElMessage } from 'element-plus'
 // 表单与基础状态
 const loginFormRef = ref()
 const isLoading = ref(false)
+const showLoginHint = ref(false) // 控制提示文字显示
 const router = useRouter()
 const userStore = useUserStore()
 const showFirstLoginTip = ref(false)
@@ -141,7 +146,6 @@ const checkInitProgress = async (taskId) => {
   try {
     const progressResponse = await getUpdateProgress(taskId)
     
-    // 必须先判断响应是否有效（防止 undefined 错误）
     if (!progressResponse) {
       throw new Error('Invalid progress response')
     }
@@ -154,19 +158,21 @@ const checkInitProgress = async (taskId) => {
     initProgress.value = Math.min(100, Math.max(0, percent || 0))
     initProgressText.value = message || `Processing (${initProgress.value}%)`
 
-    // 处理完成/失败状态
+    // 处理完成/失败状态（此时隐藏提示文字）
     if (completed) {
       clearInterval(progressPollTimer)
       initStatus.value = 'success'
       initProgressText.value = 'Data initialization completed! Redirecting...'
+      showLoginHint.value = false // 初始化完成，隐藏提示
       setTimeout(() => {
         showInitProgress.value = false
-        router.push('/query') // 完成后跳转
+        router.push('/query')
       }, 1500)
     } else if (failed) {
       clearInterval(progressPollTimer)
       initStatus.value = 'exception'
       initProgressText.value = `Failed: ${error || 'Unknown error'}`
+      showLoginHint.value = false // 初始化失败，隐藏提示
       ElMessage.error(initProgressText.value)
     }
   } catch (error) {
@@ -178,7 +184,6 @@ const checkInitProgress = async (taskId) => {
 // 启动事件更新并跟踪进度
 const fetchEventsWithProgress = async (email, password, userId) => {
   try {
-    // 计算日期范围（过去30天到未来90天）
     const today = new Date()
     const startDate = new Date(today.setDate(today.getDate())).toISOString().split('T')[0]
     
@@ -187,24 +192,19 @@ const fetchEventsWithProgress = async (email, password, userId) => {
 
     console.log('事件更新参数：', { email, startDate, endDate, userId })
 
-    // 调用事件更新接口（带错误捕获）
     const response = await getEventUpdate(email, password, startDate, endDate, userId)
-    console.log(response.success)
     
-    // 严格判断响应有效性（核心修复点）
     if (!response) {
       throw new Error('No response from server')
     }
 
-    // 处理接口返回结果
     if (response.success && response.task_id) {
       const taskId = response.task_id
       userStore.setEventTaskId(taskId)
       console.log('事件更新任务启动，任务ID：', taskId)
 
-      // 启动进度轮询
       showInitProgress.value = true
-      checkInitProgress(taskId) // 立即查询一次
+      checkInitProgress(taskId)
       progressPollTimer = setInterval(() => checkInitProgress(taskId), 1000)
       return true
     } else {
@@ -214,6 +214,7 @@ const fetchEventsWithProgress = async (email, password, userId) => {
     console.error('事件更新失败：', error)
     ElMessage.error(`Data initialization failed: ${error.message}`)
     showInitProgress.value = false
+    showLoginHint.value = false // 初始化失败，隐藏提示
     return false
   }
 }
@@ -221,7 +222,7 @@ const fetchEventsWithProgress = async (email, password, userId) => {
 // 首次登录弹窗确认处理
 const handleFirstLoginConfirm = () => {
   showFirstLoginTip.value = false
-  // 启动初始化并显示进度
+  // 启动初始化（提示文字继续显示）
   fetchEventsWithProgress(loginForm.email, loginForm.password, userStore.id)
 }
 
@@ -234,12 +235,14 @@ const handleLogin = async () => {
     return ElMessage.warning('Please complete the form correctly')
   }
 
+  // 显示加载状态和提示文字
   isLoading.value = true
+  showLoginHint.value = true
+
   try {
     // 验证用户身份
     const authResult = await verifyHkuAuth(loginForm.email, loginForm.password)
     
-    // 验证响应有效性（防止 undefined 错误）
     if (!authResult || !authResult.success) {
       throw new Error(authResult?.message || 'Authentication failed')
     }
@@ -253,35 +256,34 @@ const handleLogin = async () => {
     userStore.setLogin(loginForm.email, loginForm.password, userId)
     userStore.setUserId(userId)
 
-    // 检查是否为首次登录（通过课程数量判断）
+    // 检查是否为首次登录
     await userStore.loadCourses()
-    const isFirstLogin = userStore.courses.length === 0
     
-    // 首次登录显示提示弹窗
-    if (isFirstLogin) {
-      showFirstLoginTip.value = true
-    } else {
-      // 非首次登录：后台更新数据，直接跳转
-      setTimeout(() => {
-        fetchEventsWithProgress(loginForm.email, loginForm.password, userId)
-      }, 1000)
-      router.push('/query')
-    }
+    // 首次登录显示提示弹窗（提示文字保持显示）
+    // 非首次登录：后台更新数据（提示文字保持显示直到初始化完成）
+    setTimeout(() => {
+      fetchEventsWithProgress(loginForm.email, loginForm.password, userId)
+    }, 1000)
+    router.push('/query')
 
     ElMessage.success('Login successful!')
 
   } catch (error) {
     console.error('Login error:', error)
     ElMessage.error(`Error: ${error.message || 'Login failed'}`)
+    // 登录失败，隐藏提示文字
+    showLoginHint.value = false
   } finally {
+    // 仅隐藏加载状态，提示文字由初始化流程控制
     isLoading.value = false
   }
 }
 
-// 组件卸载时清理定时器（防止内存泄漏）
+// 组件卸载时清理定时器
 onUnmounted(() => {
   if (progressPollTimer) {
     clearInterval(progressPollTimer)
+    showLoginHint.value = false // 组件卸载时确保隐藏提示
   }
 })
 </script>
@@ -338,10 +340,21 @@ onUnmounted(() => {
   width: 100%;
   height: 45px;
   font-size: 20px;
+  margin-bottom: 10px; /* 增加按钮与提示文字间距 */
 }
 
 .login-btn:hover {
   background-color: #073416ff;
+}
+
+/* 登录提示文字样式 */
+.login-hint {
+  color: #666;
+  font-size: 5px;
+  text-align: center;
+  margin: 0;
+  padding: 5px 0;
+  line-height: 1.5;
 }
 
 /* 输入框聚焦样式优化 */
