@@ -241,7 +241,16 @@ async def get_events_update(
                 "percent": 40,
                 "message": "Getting user courses..."
             })
-            course_ids = main_scraper.get_course_ids_from_db(user_id)
+
+            start_time = time.time()
+            while True:
+                course_ids = main_scraper.get_course_ids_from_db(user_id)
+                if course_ids:
+                    break
+                elapsed_time = time.time() - start_time
+                if elapsed_time >= 1800:
+                    break
+                time.sleep(60)
             if not course_ids:
                 task_status[task_id].update({
                     "status": "completed",
