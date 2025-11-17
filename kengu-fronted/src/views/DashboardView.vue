@@ -72,7 +72,7 @@
               class="month-nav-btn"
             />
             <div class="title-group">
-              <h4 class="month-title">{{ currentYear }}年{{ currentMonth + 1 }}月</h4>
+              <h4 class="month-title">{{ formatMonthYear(currentYear, currentMonth) }}</h4>
               <el-button 
                 type="primary" 
                 size="small" 
@@ -346,6 +346,14 @@ const activeRagCollapse = ref('');
 // 日历配置 - 星期表头
 const weekdays = ['Sun', 'Mon', 'Tue', 'Wen', 'Thu', 'Fri', 'Sat'];
 
+const formatMonthYear = (year, month) => {
+  // 月份英文名称数组（0 = 1月，11 = 12月）
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+  return `${monthNames[month]} ${year}`;
+};
 // 计算42天日历
 const calendarDays = computed(() => {
   const days = [];
