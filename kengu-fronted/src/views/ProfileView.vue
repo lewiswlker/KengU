@@ -252,6 +252,22 @@ const handleLogout = () => {
   word-break: break-all;
 }
 
+::v-deep .el-dropdown-menu__item {
+  color: #0a4a1f !important; /* 自定义默认颜色 */
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* 悬停状态：设置高亮颜色 */
+::v-deep .el-dropdown-menu__item:hover {
+  color: #0a4a1f !important; /* 自定义悬停颜色 */
+  background-color: rgba(10, 74, 31, 0.05) !important;
+}
+
+/* 分割线样式 */
+::v-deep .el-dropdown-menu__item.divided {
+  border-top-color: #eee !important;
+}
+
 @media (max-width: 768px) {
   .kengu-logo {
     width: 40px;

@@ -139,7 +139,7 @@
               <el-checkbox v-model="event.completed" @change="updateTodoStatus(event)"></el-checkbox>
               <div class="todo-content">
                 <div class="todo-name" :class="{ 'completed': event.completed }">{{ event.name }}</div>
-                <div class="todo-desc">{{ event.description }}</div>
+                <div class="todo-desc" v-html="event.description"></div>
               </div>
             </div>
           </div>
@@ -640,7 +640,7 @@ const loadAllAssignments = async () => {
   eventsData.value = processedAssignments.map(assignment => ({
     date: new Date(assignment.due_date),
     name: assignment.title,
-    description: `Course: ${assignment.courseName || 'Unknown'}\n Description: ${assignment.description || 'N/A'}\nType: ${assignment.assignment_type || 'N/A'}`,
+    description: `Course: ${assignment.courseName || 'Unknown'}\n Description: ${assignment.description || 'N/A'}\n Attachment: ${assignment.attachment_path ? `<a href="${assignment.attachment_path}" target="_blank">${assignment.attachment_path}</a>` : 'N/A'}`,
     completed: assignment.status === 'completed',
     assignmentId: assignment.id
   })).filter(item => isValidDate(item.date));
@@ -1240,6 +1240,8 @@ const updateTodoStatus = async (event) => {
 }
 .todo-name { font-weight: 500; font-size: 15px; margin-bottom: 3px; }
 .todo-desc { font-size: 11px; color: #666; white-space: pre-line; }
+::v-deep .todo-desc a {color: #0a4a1f;text-decoration: underline;}
+::v-deep .todo-desc a:hover {color: #073416; /* hover 时加深颜色 */text-decoration: none;}
 .completed { text-decoration: line-through; color: #999; }
 .no-todos {
   color: #666;
@@ -1573,6 +1575,22 @@ const updateTodoStatus = async (event) => {
 
 ::v-deep .el-progress--success .el-progress-bar__inner {
   background-color: #52c41a !important;
+}
+
+::v-deep .el-dropdown-menu__item {
+  color: #0a4a1f !important; /* 自定义默认颜色 */
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* 悬停状态：设置高亮颜色 */
+::v-deep .el-dropdown-menu__item:hover {
+  color: #0a4a1f !important; /* 自定义悬停颜色 */
+  background-color: rgba(10, 74, 31, 0.05) !important;
+}
+
+/* 分割线样式 */
+::v-deep .el-dropdown-menu__item.divided {
+  border-top-color: #eee !important;
 }
 
 /* 响应式调整 */
