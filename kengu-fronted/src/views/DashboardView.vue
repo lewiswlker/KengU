@@ -1,5 +1,19 @@
 <template>
   <div class="dashboard-page">
+    <!-- 顶部进度条 - 与query页面风格统一 -->
+    <el-progress
+      v-if="isUpdating"
+      :percentage="updateProgress"
+      :status="updateStatus"
+      stroke-width="4"
+      style="position: fixed; top: 60px; left: 0; right: 0; z-index: 100; background: white; padding: 5px 20px;"
+    >
+      <template #default>
+        <span style="margin-right: 15px; font-size: 14px; font-weight: 500;">Updating assignments:</span>
+        <span style="margin-left: 10px; font-size: 14px;">{{ updateMessage }}</span>
+      </template>
+    </el-progress>
+
     <!-- 头部区域 -->
     <el-header class="hku-header">
       <div class="header-left">
@@ -7,6 +21,11 @@
           type="text" 
           @click="goToQuery"
           class="kengu-btn"
+        >
+        <img 
+          src="../assets/logo.png"
+          alt="KengU Logo" 
+          class="kengu-logo"
         >
           KengU
         </el-button>
@@ -53,14 +72,14 @@
               class="month-nav-btn"
             />
             <div class="title-group">
-              <h4 class="month-title">{{ currentYear }}年{{ currentMonth + 1 }}月</h4>
+              <h4 class="month-title">{{ formatMonthYear(currentYear, currentMonth) }}</h4>
               <el-button 
                 type="primary" 
                 size="small" 
                 icon="Refresh" 
                 @click="goToToday"
                 class="today-btn"
-                title="回到今日"
+                title="Back to today"
               />
             </div>
             <el-button 
@@ -120,7 +139,7 @@
               <el-checkbox v-model="event.completed" @change="updateTodoStatus(event)"></el-checkbox>
               <div class="todo-content">
                 <div class="todo-name" :class="{ 'completed': event.completed }">{{ event.name }}</div>
-                <div class="todo-desc">{{ event.description }}</div>
+                <div class="todo-desc" v-html="event.description"></div>
               </div>
             </div>
           </div>
@@ -149,10 +168,47 @@
                     {{ msg.role === 'user' ? 'You' : 'KengU Assistant' }}
                     <span class="message-time">{{ msg.time }}</span>
                   </div>
+                  
+                  <!-- RAG参考文本区域 -->
+                  <div v-if="msg.role === 'assistant' && msg.ragTexts && msg.ragTexts.length" class="rag-container">
+                    <div 
+                      class="rag-toggle" 
+                      :class="{ 'expanded': isRagExpanded(index) }"
+                      @click="toggleRagExpand(index)"
+                    >
+                      <span>
+                        <el-icon class="thought-icon"><Search /></el-icon>
+                        Reference texts ({{ msg.ragTexts.length }})
+                      </span>
+                      <el-icon class="rag-toggle-icon"><ArrowDown /></el-icon>
+                    </div>
+                    
+                    <div 
+                      class="rag-content" 
+                      v-show="isRagExpanded(index)"
+                    >
+                      <div class="rag-content-header">
+                        <el-icon class="thought-icon"><Search /></el-icon>
+                        Detailed reference texts
+                      </div>
+                      <div 
+                        v-for="(text, idx) in msg.ragTexts" 
+                        :key="idx" 
+                        class="rag-item"
+                        :data-index="idx + 1"
+                      >
+                        {{ text }}
+                        <span v-if="msg.sources[idx]?.relevance" class="rag-relevance">
+                          {{ (msg.sources[idx].relevance * 100).toFixed(0) }}% match
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
                   <div class="message-content" v-html="formatMessage(msg.content)"></div>
                   
                   <div v-if="msg.role === 'assistant' && msg.sources?.length" class="message-sources">
-                    <h4>参考来源：</h4>
+                    <h4>References:</h4>
                     <el-link
                       v-for="(source, idx) in msg.sources"
                       :key="idx"
@@ -199,7 +255,7 @@
               placeholder="Please Enter your question..."
               class="query-input"
               @keydown.enter.prevent="submitQuestion"
-              :disabled="isLoading || isGenerating"
+              :disabled="isLoading || isGenerating || isUpdating"
             ></textarea>
             
             <div class="query-actions">
@@ -224,8 +280,8 @@
               <el-button 
                 type="primary" 
                 @click="submitQuestion"
-                :loading="isLoading || isGenerating"
-                :disabled="(!question.trim() && selectedCourses.length === 0) || isGenerating"
+                :loading="isLoading || isGenerating || isUpdating"
+                :disabled="(!question.trim() && selectedCourses.length === 0) || isGenerating || isUpdating"
                 class="submit-btn"
               >
                 <el-icon><Search /></el-icon>
@@ -240,22 +296,24 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue';
+import { ref, watch, nextTick, onMounted, onUnmounted, computed, onDeactivated } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../stores/user';
 import { User, ArrowDown, Search, Document } from '@element-plus/icons-vue';
-import { ElMessage, ElLoading } from 'element-plus';
+import { ElMessage, ElLoading, ElMessageBox, ElProgress } from 'element-plus';
 import { 
   get_assignments_by_date_range, 
+  getCourses,
   mark_assignment_complete,
-  mark_assignment_pending  // 导入新增的API函数
+  mark_assignment_pending,
+  getUpdateProgress
 } from '../services/api';
 
 // 状态管理与路由
 const userStore = useUserStore();
 const router = useRouter();
 
-// 核心状态（保持不变）
+// 核心状态
 const question = ref('');
 const isLoading = ref(false);
 const isGenerating = ref(false);
@@ -271,10 +329,32 @@ const currentMonth = ref(new Date().getMonth());
 const typingRef = ref(null);
 const messageRefs = ref([]);
 
-// 日历配置 - 星期表头
-const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+// 进度跟踪相关状态 - 与query页面风格统一
+const isUpdating = ref(false);
+const updateProgress = ref(0);
+const updateMessage = ref('Initializing update...');
+const updateStatus = computed(() => {
+  if (updateMessage.value.includes('Failed')) return 'exception';
+  if (updateProgress.value === 100) return 'success';
+  return 'active';
+});
+let progressPollTimer = null;
 
-// 计算42天日历（保持不变）
+// RAG折叠状态管理
+const activeRagCollapse = ref('');
+
+// 日历配置 - 星期表头
+const weekdays = ['Sun', 'Mon', 'Tue', 'Wen', 'Thu', 'Fri', 'Sat'];
+
+const formatMonthYear = (year, month) => {
+  // 月份英文名称数组（0 = 1月，11 = 12月）
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+  return `${monthNames[month]} ${year}`;
+};
+// 计算42天日历
 const calendarDays = computed(() => {
   const days = [];
   const firstDay = new Date(currentYear.value, currentMonth.value, 1);
@@ -301,12 +381,43 @@ const calendarDays = computed(() => {
   return days;
 });
 
-// 工具函数：检查日期有效性（保持不变）
+// RAG相关方法
+const isRagExpanded = (index) => {
+  return activeRagCollapse.value === `rag-${index}`;
+};
+
+const toggleRagExpand = (index) => {
+  if (isRagExpanded(index)) {
+    activeRagCollapse.value = '';
+  } else {
+    activeRagCollapse.value = `rag-${index}`;
+  }
+};
+
+// URL去重工具函数
+const deduplicateSources = (sources) => {
+  const uniqueSources = [];
+  const urlSet = new Set();
+  
+  for (const s of sources) {
+    if (!s.url) continue;
+    
+    const normalizedUrl = s.url.replace(/\/$/, '');
+    if (!urlSet.has(normalizedUrl)) {
+      urlSet.add(normalizedUrl);
+      uniqueSources.push(s);
+    }
+  }
+  
+  return uniqueSources;
+};
+
+// 工具函数：检查日期有效性
 const isValidDate = (date) => {
   return date && date instanceof Date && !isNaN(date.getTime());
 };
 
-// 滚动到最新消息（保持不变）
+// 滚动到最新消息
 const scrollToLatest = async () => {
   await nextTick();
   if (isGenerating.value && typingRef.value) {
@@ -316,27 +427,124 @@ const scrollToLatest = async () => {
   }
 };
 
-// 课程引用功能（保持不变）
+// 课程引用功能
 const removeCourseReference = (courseId) => {
   selectedCourses.value = selectedCourses.value.filter(course => course.id !== courseId);
 };
 
-// 导航方法（保持不变）
+// 导航方法
 const goToQuery = () => router.push('/query');
 const goToDashboard = () => router.push('/dashboard');
 const goToProfile = () => router.push('/profile');
 
-// 回到今日（保持不变）
+// 回到今日
 const goToToday = () => {
   const today = new Date();
   currentYear.value = today.getFullYear();
   currentMonth.value = today.getMonth();
   currentDate.value = today;
   loadAllAssignments();
-  ElMessage.success('已回到今日');
+  ElMessage.success('Back to today');
 };
 
-// 获取作业数据（保持不变）
+// 查询更新进度 - 与query页面风格统一
+const checkUpdateProgress = async () => {
+  const taskId = userStore.eventTaskId;
+  if (!taskId) {
+    console.log('No task ID found, stopping progress check');
+    stopProgressPolling();
+    return;
+  }
+
+  try {
+    console.log('Checking update status for task:', taskId);
+    const response = await getUpdateProgress(taskId);
+    
+    if (!response) {
+      throw new Error('Invalid response from server');
+    }
+
+    if (response.success) {
+      const percent = response.percent;
+      const message = response.message;
+      const completed = response.completed;
+      const failed = response.failed;
+      const error = response.error;
+      
+      // 强制更新进度状态
+      updateProgress.value = Math.min(100, Math.max(0, percent || 0));
+      updateMessage.value = message || 'Updating data...';
+      isUpdating.value = true;
+
+      console.log(`Update progress: ${updateProgress.value}% - ${updateMessage.value}`);
+
+      // 处理完成状态
+      if (completed) {
+        updateStatus.value; // 触发计算属性更新
+        ElMessage.success('Data update completed! Refreshing tasks...');
+        stopProgressPolling();
+        await loadAllAssignments();
+        setTimeout(() => {
+          isUpdating.value = false;
+          updateProgress.value = 0;
+          userStore.setEventTaskId(null);
+        }, 2000);
+      }
+
+      // 处理失败状态
+      if (failed) {
+        updateMessage.value = `Updating Failed: ${error || 'Unknown error'}`;
+        updateStatus.value; // 触发计算属性更新
+        ElMessage.error(updateMessage.value);
+        stopProgressPolling();
+        setTimeout(() => {
+          isUpdating.value = false;
+          updateProgress.value = 0;
+        }, 3000);
+      }
+    } else {
+      updateMessage.value = response.message || 'Update in progress...';
+      isUpdating.value = true;
+    }
+  } catch (error) {
+    console.error('Error checking update status:', error);
+    updateMessage.value = `Failed to query progress: ${error.message}`;
+    isUpdating.value = true;
+    
+    // 仅在有任务ID时重试
+    if (taskId) {
+      setTimeout(checkUpdateProgress, 2000);
+    } else {
+      stopProgressPolling();
+    }
+  }
+};
+
+// 启动进度轮询
+const startProgressPolling = () => {
+  if (progressPollTimer) {
+    clearInterval(progressPollTimer);
+  }
+  
+  if (userStore.eventTaskId) {
+    console.log('Starting progress polling for task:', userStore.eventTaskId);
+    checkUpdateProgress();
+    progressPollTimer = setInterval(checkUpdateProgress, 1000);
+  } else {
+    console.log('No event task ID, cannot start polling');
+  }
+};
+
+// 停止进度轮询
+const stopProgressPolling = () => {
+  if (progressPollTimer) {
+    clearInterval(progressPollTimer);
+    progressPollTimer = null;
+    console.log('Progress polling stopped');
+  }
+};
+
+// 获取作业数据
 const fetchAssignmentsByDateRange = async (startDate, endDate) => {
   const loading = ElLoading.service({
     lock: false,
@@ -351,45 +559,74 @@ const fetchAssignmentsByDateRange = async (startDate, endDate) => {
   } catch (error) {
     loading.close();
     console.error('获取作业数据出错:', error);
-    ElMessage.error('网络错误，无法获取作业数据');
+    ElMessage.error('Network error');
     return [];
   }
 };
 
-// 标记作业完成（保持不变）
+// 标记作业完成
 const markAssignmentComplete = async (assignmentId) => {
   try {
-    console.log(`调用接口：POST /api/assignments/mark-complete`);
-    console.log(`请求参数：assignment_id=${assignmentId}`);
     return await mark_assignment_complete(assignmentId);
   } catch (error) {
     console.error('更新作业状态出错:', error);
-    return { success: false, error: '网络错误' };
+    return { success: false, error: 'Network error' };
   }
 };
 
-// 新增：标记作业为待处理状态
+// 标记作业为待处理状态
 const markAssignmentPending = async (assignmentId) => {
   try {
-    console.log(`调用接口：POST /api/assignments/mark-pending`);
-    console.log(`请求参数：assignment_id=${assignmentId}`);
     return await mark_assignment_pending(assignmentId);
   } catch (error) {
     console.error('更新作业为待处理状态出错:', error);
-    return { success: false, error: '网络错误' };
+    return { success: false, error: 'Network error' };
   }
 };
 
-// 初始化加载作业（保持不变）
+// 初始化加载作业和启动进度轮询
 onMounted(async () => {
+  console.log('Dashboard mounted, checking user status');
   if (!userStore.email) {
     router.push('/');
     return;
   }
+  
   await loadAllAssignments();
+  
+  // 确保任务ID存在时才启动轮询
+  console.log('User event task ID:', userStore.eventTaskId);
+  if (userStore.eventTaskId) {
+    startProgressPolling();
+  } else {
+    console.log('No event task ID found on mount');
+  }
 });
 
-// 加载作业（保持不变）
+// 组件清理
+onUnmounted(cleanup);
+onDeactivated(cleanup);
+
+function cleanup() {
+  stopProgressPolling();
+  if (abortController.value) {
+    abortController.value.abort();
+  }
+}
+
+// 获取课程名称
+const getCourseName = async (courseId) => {
+  try {
+    const courseIdNum = Number(courseId);
+    const courseResult = await getCourses(courseIdNum);
+    return `${courseResult?.data || 'Unknown'}`;
+  } catch (error) {
+    console.error('获取课程失败：', error);
+    return 'Course: Unknown (获取失败)';
+  }
+};
+
+// 加载作业
 const loadAllAssignments = async () => {
   const startDate = new Date(calendarDays.value[0]);
   startDate.setHours(0, 0, 0, 0);
@@ -400,10 +637,18 @@ const loadAllAssignments = async () => {
   const endDateStr = endDate.toISOString().split('T')[0];
   
   const assignments = await fetchAssignmentsByDateRange(startDateStr, endDateStr);
-  eventsData.value = assignments.map(assignment => ({
+  
+  const processedAssignments = await Promise.all(
+  assignments.map(async (assignment) => {
+    const courseName = await getCourseName(assignment.course_id);
+    return { ...assignment, courseName };
+  })
+);
+  
+  eventsData.value = processedAssignments.map(assignment => ({
     date: new Date(assignment.due_date),
     name: assignment.title,
-    description: `Course: ${assignment.course_name || 'Unknown'}\nType: ${assignment.assignment_type || 'N/A'}`,
+    description: `Course: ${assignment.courseName || 'Unknown'}\n Description: ${assignment.description || 'N/A'}\n Attachment: ${assignment.attachment_path ? `<a href="${assignment.attachment_path}" target="_blank">${assignment.attachment_path}</a>` : 'N/A'}`,
     completed: assignment.status === 'completed',
     assignmentId: assignment.id
   })).filter(item => isValidDate(item.date));
@@ -411,12 +656,7 @@ const loadAllAssignments = async () => {
   selectedDateEvents.value = getSelectedDateEvents();
 };
 
-// 组件卸载时清理（保持不变）
-onUnmounted(() => {
-  if (abortController.value) abortController.value.abort();
-});
-
-// 聊天相关方法（保持不变）
+// 聊天相关方法
 const clearInput = () => {
   question.value = '';
   selectedCourses.value = [];
@@ -427,119 +667,193 @@ const formatMessage = (content) => content.replace(/\n/g, '<br/>');
 const stopGeneration = () => {
   if (abortController.value) {
     abortController.value.abort();
-    if (currentAiContent.value.trim()) {
+    
+    let finalContent = currentAiContent.value;
+    const currentRagTexts = [];
+    
+    const uniqueSources = window.currentRetrievalSources ? deduplicateSources(window.currentRetrievalSources) : [];
+    currentRagTexts.push(...uniqueSources.map(s => s.text).filter(Boolean));
+    
+    if (finalContent.trim()) {
       chatHistory.value.push({
         role: 'assistant',
-        content: currentAiContent.value,
+        content: finalContent,
         time: new Date().toLocaleString(),
-        sources: []
+        sources: uniqueSources,
+        ragTexts: currentRagTexts
       });
     }
+    
     isGenerating.value = false;
     currentAiContent.value = '';
+    window.currentRetrievalSources = [];
     scrollToLatest();
-    ElMessage.info('已终止回答生成');
+    ElMessage.info('Answer generation terminated');
   }
 };
 
 const fetchAskQuestion = (user_request, user_id, email, messages) => {
-  return fetch('http://localhost:5000/api/chat/stream', {
+  const backendURL = window.location.hostname.includes('natapp')
+    ? 'http://kengu-api.natapp1.cc/api/chat/stream'
+    : 'http://localhost:8009/api/chat/stream'
+  
+  return fetch(backendURL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
-    body: JSON.stringify({ user_request, user_id: user_id ? Number(user_id) : null, user_email: email, messages }),
+    body: JSON.stringify({ 
+      user_request, 
+      user_id: user_id ? Number(user_id) : null, 
+      user_email: email, 
+      messages,
+      selected_course_ids: selectedCourses.value.map(c => c.id)
+    }),
     signal: abortController.value?.signal
   });
 };
 
 const submitQuestion = async () => {
-  let finalQuestion = question.value.trim();
+  let finalQuestion = question.value.trim()
   if (selectedCourses.value.length > 0) {
-    const courseNames = selectedCourses.value.map(course => course.name).join('、');
-    finalQuestion = `[课程: ${courseNames}] ${finalQuestion}`;
+    const courseNames = selectedCourses.value.map(c => c.name).join('、')
+    finalQuestion = `[Courses: ${courseNames}] ${finalQuestion}`
   }
 
-  if (!finalQuestion) return;
+  if (!finalQuestion) return
 
-  chatHistory.value.push({
+  window.currentRetrievalSources = []
+
+  const userMsg = {
     role: 'user',
     content: finalQuestion,
     time: new Date().toLocaleString()
-  });
-  question.value = '';
-  selectedCourses.value = [];
-  isGenerating.value = true;
-  currentAiContent.value = '';
+  }
+  chatHistory.value.push(userMsg)
+  question.value = ''
+  selectedCourses.value = []
+  isGenerating.value = true
+  currentAiContent.value = ''
+
+  const messagesParams = chatHistory.value.map(msg => ({
+    role: msg.role,
+    content: msg.content
+  }))
 
   try {
-    abortController.value = new AbortController();
+    abortController.value = new AbortController()
     const response = await fetchAskQuestion(
       finalQuestion,
       userStore.id,
       userStore.email,
-      chatHistory.value.map(msg => ({ role: msg.role, content: msg.content }))
-    );
+      messagesParams
+    )
 
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
-    let done = false;
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    if (!response.body || typeof response.body.getReader !== 'function') {
+      throw new Error('The backend did not return a valid streaming response')
+    }
 
-    while (!done) {
-      const { done: readerDone, value } = await reader.read();
-      done = readerDone;
-      if (done) break;
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+    let isStreaming = true
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n\n');
-      
+    while (isStreaming) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n\n')
       for (const line of lines) {
         if (line.startsWith('data: ') && line.trim() !== 'data: ') {
           try {
-            const { chunk } = JSON.parse(line.slice(6));
-            currentAiContent.value += chunk;
-            await nextTick();
-            scrollToLatest();
-          } catch (e) { console.error('解析错误:', e); }
+            const dataStr = line.slice(6)
+            const { chunk } = JSON.parse(dataStr)
+            
+            if (chunk.startsWith('__SOURCES__:') && chunk.includes('__END_SOURCES__')) {
+              const sourcesJson = chunk.replace('__SOURCES__:', '').replace('__END_SOURCES__', '')
+              try {
+                const sources = JSON.parse(sourcesJson)
+                
+                const newSources = sources.map(s => ({
+                  name: s.title || 'Unknown sources',
+                  url: s.source_url || '#',
+                  relevance: s.relevance_score || 0,
+                  text: s.text || ''
+                }))
+                
+                const mergedSources = [...(window.currentRetrievalSources || []), ...newSources]
+                window.currentRetrievalSources = deduplicateSources(mergedSources)
+                
+              } catch (e) {
+                console.error('Failed to parse source data:', e)
+              }
+            } else {
+              currentAiContent.value += chunk
+              await nextTick()
+              scrollToLatest()
+            }
+          } catch (e) {
+            console.error('Failed to parse streaming data:', e)
+          }
         }
       }
-      buffer = lines[lines.length - 1] || '';
+      buffer = lines[lines.length - 1] || ''
     }
 
-    isGenerating.value = false;
+    isGenerating.value = false
     if (currentAiContent.value) {
+      const uniqueSources = window.currentRetrievalSources ? deduplicateSources(window.currentRetrievalSources) : []
+      const ragTexts = uniqueSources.map(s => s.text).filter(Boolean)
+      
       chatHistory.value.push({
         role: 'assistant',
         content: currentAiContent.value,
         time: new Date().toLocaleString(),
-        sources: []
-      });
-      currentAiContent.value = '';
-      scrollToLatest();
+        sources: uniqueSources,
+        ragTexts: ragTexts
+      })
+      
+      currentAiContent.value = ''
+      window.currentRetrievalSources = []
+      await nextTick()
+      scrollToLatest()
     }
 
   } catch (error) {
-    isGenerating.value = false;
+    isGenerating.value = false
     if (error.name !== 'AbortError') {
-      console.error('提问失败:', error);
-      ElMessage.error('查询失败，请重试');
-      chatHistory.value.pop();
+      console.error('Failed to submit the question', error)
+      ElMessage.error('Query failed. Please try again!')
+      chatHistory.value.pop()
     }
+    window.currentRetrievalSources = []
   } finally {
-    abortController.value = null;
+    abortController.value = null
   }
-};
+}
 
-// 退出登录（保持不变）
+// 退出登录
 const handleLogout = () => {
-  if (confirm('确定要退出登录吗？')) {
-    if (abortController.value) abortController.value.abort();
+  ElMessageBox.confirm(
+    'Are you sure to logout?', 
+    'Confirmation', 
+    {
+      confirmButtonText: 'Yes',
+      cancelButtonText: 'Cancel',
+      type: 'warning',
+      customClass: 'custom-logout-box'
+    }
+  )
+  .then(() => {
     userStore.logout();
     router.push('/');
-  }
+  })
+  .catch(() => {
+    // 取消退出逻辑
+  });
 };
 
-// 切换月份（保持不变）
+// 切换月份
 const changeMonth = (type) => {
   if (type === 'prev') {
     currentMonth.value--;
@@ -557,14 +871,14 @@ const changeMonth = (type) => {
   loadAllAssignments();
 };
 
-// 日期格式化（保持不变）
+// 日期格式化
 const formatDate = (date) => {
   return isValidDate(date) ? date.toLocaleDateString('en-US', { 
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
   }) : '';
 };
 
-// 日期字符串生成（保持不变）
+// 日期字符串生成
 const getLocalDateStr = (date) => {
   if (!isValidDate(date)) return '';
   const d = new Date(date);
@@ -575,21 +889,21 @@ const getLocalDateStr = (date) => {
   ].join('-');
 };
 
-// 判断日期是否有事件（保持不变）
+// 判断日期是否有事件
 const hasEvent = (date) => {
   if (!isValidDate(date)) return false;
   const targetStr = getLocalDateStr(date);
   return eventsData.value.some(event => getLocalDateStr(event.date) === targetStr);
 };
 
-// 获取指定日期的事件（保持不变）
+// 获取指定日期的事件
 const getDayEvents = (date) => {
   if (!isValidDate(date)) return [];
   const targetStr = getLocalDateStr(date);
   return eventsData.value.filter(event => getLocalDateStr(event.date) === targetStr);
 };
 
-// 判断是否为当天（保持不变）
+// 判断是否为当天
 const isCurrentDay = (date) => {
   if (!isValidDate(date)) return false;
   const today = new Date();
@@ -600,7 +914,7 @@ const isCurrentDay = (date) => {
   );
 };
 
-// 判断是否为当月（保持不变）
+// 判断是否为当月
 const isSameMonth = (date) => {
   if (!isValidDate(date)) return false;
   return (
@@ -609,7 +923,7 @@ const isSameMonth = (date) => {
   );
 };
 
-// 判断是否为选中日期（保持不变）
+// 判断是否为选中日期
 const isSelectedDay = (date) => {
   if (!isValidDate(date) || !isValidDate(currentDate.value)) return false;
   return (
@@ -619,24 +933,24 @@ const isSelectedDay = (date) => {
   );
 };
 
-// 文本截断（保持不变）
+// 文本截断
 const truncateText = (text, length) => {
   return text.length > length ? text.substring(0, length) + '...' : text;
 };
 
-// 获取选中日期的事件（保持不变）
+// 获取选中日期的事件
 const getSelectedDateEvents = () => {
   return isValidDate(currentDate.value) 
     ? getDayEvents(currentDate.value) 
     : [];
 };
 
-// 监听日期变化更新待办列表（保持不变）
+// 监听日期变化更新待办列表
 watch(currentDate, () => {
   selectedDateEvents.value = getSelectedDateEvents();
 }, { deep: true });
 
-// 日期点击事件（保持不变）
+// 日期点击事件
 const handleDateClick = (date) => {
   if (!isSameMonth(date)) {
     currentYear.value = date.getFullYear();
@@ -646,34 +960,32 @@ const handleDateClick = (date) => {
   currentDate.value = new Date(date);
 };
 
-// 修改：更新作业状态（根据勾选状态切换完成/待处理）
+// 更新作业状态
 const updateTodoStatus = async (event) => {
   const targetEvent = eventsData.value.find(item => item.assignmentId === event.assignmentId);
   if (targetEvent) targetEvent.completed = event.completed;
 
   if (event.assignmentId) {
-    // 根据勾选状态调用不同的API
     const result = event.completed 
-      ? await markAssignmentComplete(event.assignmentId)  // 勾选：标记为完成
-      : await markAssignmentPending(event.assignmentId);  // 取消勾选：标记为待处理
+      ? await markAssignmentComplete(event.assignmentId)
+      : await markAssignmentPending(event.assignmentId);
 
     if (!result.success) {
-      // 失败时回滚状态
       if (targetEvent) targetEvent.completed = !event.completed;
-      ElMessage.error(result.error || '更新失败');
+      ElMessage.error(result.error || 'Failed to update');
     } else {
-      ElMessage.success(event.completed ? '已标记为完成' : '已恢复为待处理');
+      ElMessage.success(event.completed ? 'Marked as completed' : 'Restored to pending');
     }
   }
 };
 </script>
 
 <style scoped>
-/* 样式保持不变 */
+/* 基础样式 */
 .dashboard-page {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  height: 100vh;
   overflow: hidden;
 }
 
@@ -699,6 +1011,17 @@ const updateTodoStatus = async (event) => {
   padding: 0 !important;
 }
 
+.kengu-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.kengu-btn:hover .kengu-logo {
+  opacity: 0.9;
+}
+
 .header-nav {
   flex: 1;
   margin-left: 40px;
@@ -718,6 +1041,9 @@ const updateTodoStatus = async (event) => {
   padding: 20px;
   box-sizing: border-box;
   overflow: hidden;
+  /* 为顶部进度条留出空间 */
+  margin-top: 0;
+  padding-top: 10px;
 }
 
 /* 日历样式 */
@@ -886,9 +1212,33 @@ const updateTodoStatus = async (event) => {
   padding: 20px;
   display: flex;
   flex-direction: column;
+  height: calc(100vh - 180px);
+  min-height: 400px;
+  box-sizing: border-box;
 }
 .todo-header { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
-.todo-list { flex: 1; overflow-y: auto; }
+.todo-list { 
+  flex: 1; 
+  overflow-y: auto; 
+  padding-right: 8px;
+  max-height: calc(100vh - 250px);
+}
+
+.todo-list::-webkit-scrollbar {
+  width: 6px;
+}
+.todo-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+.todo-list::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+.todo-list::-webkit-scrollbar-thumb:hover {
+  background: #aaa;
+}
+
 .todo-item {
   display: flex;
   align-items: flex-start;
@@ -896,8 +1246,10 @@ const updateTodoStatus = async (event) => {
   padding: 10px 0;
   border-bottom: 1px solid #f5f5f5;
 }
-.todo-name { font-weight: 500; font-size: 14px; margin-bottom: 3px; }
-.todo-desc { font-size: 13px; color: #666; white-space: pre-line; }
+.todo-name { font-weight: 500; font-size: 15px; margin-bottom: 3px; }
+.todo-desc { font-size: 11px; color: #666; white-space: pre-line; }
+::v-deep .todo-desc a {color: #0a4a1f;text-decoration: underline;}
+::v-deep .todo-desc a:hover {color: #073416; /* hover 时加深颜色 */text-decoration: none;}
 .completed { text-decoration: line-through; color: #999; }
 .no-todos {
   color: #666;
@@ -912,13 +1264,16 @@ const updateTodoStatus = async (event) => {
   min-width: 300px;
   display: flex;
   flex-direction: column;
+  height: calc(100vh - 100px); 
 }
 
 .qa-container {
   flex: 1;
   display: flex;
   flex-direction: column;
-  height: 100%;
+  overflow: hidden;
+  border: 1px solid #eaecef;
+  border-radius: 8px;
 }
 
 .answer-container {
@@ -927,9 +1282,11 @@ const updateTodoStatus = async (event) => {
   padding: 20px;
   background-color: #fff;
   height: calc(100% - 120px);
+  max-height: calc(100% - 100px); 
+  box-sizing: border-box;
 }
 .chat-scroll {
-  height: 95%;
+  height: 99%;
   overflow-y: auto;
   padding-bottom: 20px;
 }
@@ -1032,6 +1389,218 @@ const updateTodoStatus = async (event) => {
   border-color: #0a4a1f !important;
 }
 
+/* RAG 相关样式 */
+.rag-container {
+  margin: 12px 0;
+  border-radius: 6px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.rag-toggle {
+  width: 100%;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #f5f7fa;
+  border: 1px solid #eaecef;
+  cursor: pointer;
+  font-size: 13px;
+  color: #0a4a1f;
+  transition: background-color 0.2s;
+}
+
+.rag-toggle:hover {
+  background-color: #eef2f5;
+}
+
+.rag-toggle-icon {
+  transition: transform 0.3s ease;
+  font-size: 14px;
+}
+
+.rag-toggle.expanded .rag-toggle-icon {
+  transform: rotate(180deg);
+}
+
+.rag-content {
+  padding: 16px;
+  background-color: #fff;
+  border: 1px solid #eaecef;
+  border-top: none;
+  max-height: 400px;
+  overflow-y: auto;
+  transition: max-height 0.3s ease;
+}
+
+.rag-content-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #eaecef;
+  display: flex;
+  align-items: center;
+}
+
+.rag-content-header .thought-icon {
+  margin-right: 8px;
+  color: #0a4a1f;
+}
+
+.rag-item {
+  position: relative;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background-color: #fafafa;
+  border-radius: 4px;
+  border-left: 3px solid #0a4a1f;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #444;
+  transition: transform 0.1s ease;
+}
+
+.rag-item:hover {
+  transform: translateX(3px);
+}
+
+.rag-item:last-child {
+  margin-bottom: 0;
+}
+
+.rag-item::before {
+  content: attr(data-index);
+  position: absolute;
+  left: -8px;
+  top: 10px;
+  width: 16px;
+  height: 16px;
+  background-color: #0a4a1f;
+  color: white;
+  border-radius: 50%;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rag-relevance {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  background-color: rgba(10, 74, 31, 0.1);
+  color: #0a4a1f;
+  font-size: 11px;
+  border-radius: 10px;
+}
+
+/* 弹窗样式 */
+.el-message-box {
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  width: 400px;
+}
+.el-message-box__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+  padding: 20px 24px 12px;
+}
+.el-message-box__message {
+  padding: 0 24px 16px;
+  font-size: 14px;
+  color: #666;
+}
+.el-message-box__btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 24px;
+}
+.el-button--primary {
+  background-color: #0a4a1f;
+  border-color: #0a4a1f;
+}
+.el-button--primary:hover {
+  background-color: #073416;
+  border-color: #073416;
+}
+.el-button--default {
+  color: #666;
+  border-color: #ddd;
+}
+.el-button--default:hover {
+  color: #333;
+  border-color: #bbb;
+  background-color: #f5f5f5;
+}
+
+/* 复选框样式 */
+::v-deep .el-checkbox__inner {
+  border-color: #ccc !important;
+  transition: all 0.2s !important;
+}
+
+::v-deep .el-checkbox:hover .el-checkbox__inner {
+  border-color: #0a4a1f !important;
+}
+
+::v-deep .el-checkbox__input.is-checked .el-checkbox__inner {
+  background-color: #0a4a1f !important;
+  border-color: #0a4a1f !important;
+}
+
+::v-deep .el-checkbox__input.is-checked .el-checkbox__inner::after {
+  border-color: white !important;
+}
+
+::v-deep .el-checkbox__input.is-disabled .el-checkbox__inner {
+  background-color: #f5f5f5 !important;
+  border-color: #ddd !important;
+}
+::v-deep .el-checkbox__input.is-disabled.is-checked .el-checkbox__inner {
+  background-color: #e6e6e6 !important;
+  border-color: #e6e6e6 !important;
+}
+
+/* 进度条样式 - 与query页面保持一致 */
+::v-deep .el-progress-bar__inner {
+  background-color: #0a4a1f !important;
+  transition: width 0.3s ease !important;
+}
+
+::v-deep .el-progress__text {
+  color: #666 !important;
+  font-size: 14px !important;
+}
+
+::v-deep .el-progress--exception .el-progress-bar__inner {
+  background-color: #f56c6c !important;
+}
+
+::v-deep .el-progress--success .el-progress-bar__inner {
+  background-color: #52c41a !important;
+}
+
+::v-deep .el-dropdown-menu__item {
+  color: #0a4a1f !important; /* 自定义默认颜色 */
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* 悬停状态：设置高亮颜色 */
+::v-deep .el-dropdown-menu__item:hover {
+  color: #0a4a1f !important; /* 自定义悬停颜色 */
+  background-color: rgba(10, 74, 31, 0.05) !important;
+}
+
+/* 分割线样式 */
+::v-deep .el-dropdown-menu__item.divided {
+  border-top-color: #eee !important;
+}
+
 /* 响应式调整 */
 @media (max-width: 1200px) {
   .dashboard-main { flex-wrap: wrap; }
@@ -1039,5 +1608,54 @@ const updateTodoStatus = async (event) => {
     width: 100%;
     margin-bottom: 20px;
   }
+}
+
+@media (max-width: 768px) {
+  .kengu-logo {
+    width: 40px;
+    height: 40px;
+  }
+  .kengu-btn {
+    font-size: 16px;
+  }
+}
+</style>
+
+<style>
+/* 弹窗样式 */
+.custom-logout-box .el-message-box {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.custom-logout-box .el-message-box__title {
+  color: #0a4a1f !important;
+}
+
+.custom-logout-box .el-message-box__message {
+  color: #555 !important;
+  font-size: 14px !important;
+}
+
+.custom-logout-box .el-button--primary {
+  background-color: #0a4a1f !important;
+  border-color: #0a4a1f !important;
+  color: white !important;
+}
+
+.custom-logout-box .el-button--primary:hover {
+  background-color: #073416 !important;
+  border-color: #073416 !important;
+}
+
+.custom-logout-box .el-button--default {
+  background-color: #f5f5f5 !important;
+  border-color: #ddd !important;
+  color: #666 !important;
+}
+
+.custom-logout-box .el-button--default:hover {
+  background-color: #e6e6e6 !important;
+  border-color: #ccc !important;
+  color: #333 !important;
 }
 </style>

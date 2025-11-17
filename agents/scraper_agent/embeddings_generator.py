@@ -22,7 +22,7 @@ class VectorEmbeddingsGenerator:
     # Supported file extensions
     SUPPORTED_EXTENSIONS = {'.pdf', '.txt', '.md', '.docx', '.pptx', '.html', '.htm'}
     
-    def __init__(self, base_url: str = "http://127.0.0.1:8009/"):
+    def __init__(self, base_url: str = "http://kengu-api.natapp1.cc/knowledge_base/"):
         """
         Initialize the embeddings generator
         
@@ -159,7 +159,7 @@ def generate_embeddings_from_download_stats(
         download_stats: Download statistics from scrape() function, should contain:
             - 'moodle': {'downloaded_file_paths': [...], ...}
             - 'exambase': {'downloaded_file_paths': [...], ...}  (if available)
-        base_url: Base URL for HTTP file access (default: http://127.0.0.1:8009/)
+        base_url: Base URL for HTTP file access (default: http://kengu-api.natapp1.cc/)
         
     Returns:
         Dictionary with embedding generation statistics:
@@ -171,7 +171,7 @@ def generate_embeddings_from_download_stats(
         }
     """
     if base_url is None:
-        base_url = os.getenv("KNOWLEDGE_BASE_URL", "http://127.0.0.1:8009/")
+        base_url = os.getenv("KNOWLEDGE_BASE_URL", "http://kengu-api.natapp1.cc/")
     
     logger = get_logger(log_file="rag_scraper.log", verbose=True)
     generator = VectorEmbeddingsGenerator(base_url=base_url)

@@ -218,6 +218,7 @@ class AssignmentDAO:
                              a.assignment_type, \
                              a.max_score, \
                              a.instructions, \
+                             a.attachment_path, \
                              c.course_name
                       FROM assignment a
                                LEFT JOIN courses c ON a.course_id = c.course_id

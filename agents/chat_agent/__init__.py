@@ -61,6 +61,7 @@ class ChatAgent:
         rag_retrieval_results = None  # Store RAG retrieval results
         
         for agent_type in agent_types:
+            agent_type = AgentType.RAG
             if agent_type == AgentType.SCRAPER:
                 agent_tasks.append(
                     asyncio.create_task(self._handle_scraper_agent(user_id=user_id, user_email=user_email))
@@ -84,8 +85,11 @@ class ChatAgent:
                         yield f"Agent {agent_types[i]} 执行失败: {str(result)}\n"
                     elif result is not None:
                         # Extract RAG retrieval results if this is RAG agent
+                        print("Aaaaaaaaaaaa",agent_types[i],result)
+                        agent_types[i] = AgentType.RAG
                         if agent_types[i] == AgentType.RAG and isinstance(result, dict):
                             rag_data = result.get('data', {})
+                            print("Bbbbbbbbbaaaaaa",rag_data)
                             if rag_data.get('retrieval_results'):
                                 rag_retrieval_results = rag_data['retrieval_results']
                         
@@ -112,6 +116,7 @@ class ChatAgent:
         
         # Send retrieval results first (before LLM response)
         if rag_retrieval_results:
+            print("aaaaaaaaaaaaaaaaaaaa",rag_retrieval_results)
             import json
             from dataclasses import asdict
             sources = [asdict(result) for result in rag_retrieval_results]
