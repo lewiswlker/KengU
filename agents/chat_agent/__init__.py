@@ -130,6 +130,11 @@ When responding to user queries:
                         # Add successful agent results to context
                         if isinstance(result, dict):
                             # Structured result
+                            if agent_types[i] == AgentType.RAG and isinstance(result, dict):
+                                rag_data = result.get("data", {})
+                                print("Bbbbbbbbbaaaaaa", rag_data)
+                                if rag_data.get("retrieval_results"):
+                                    rag_retrieval_results = rag_data["retrieval_results"]
                             messages.append(
                                 {
                                     "role": "system",
