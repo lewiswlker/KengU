@@ -899,7 +899,7 @@ const handleUpdateAllCourses = async () => {
   max-width: 85%;
   padding: 12px 16px;
   border-radius: 8px;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 .user-message {
@@ -939,7 +939,21 @@ const handleUpdateAllCourses = async () => {
 
 .message-content {
   font-size: 15px;
-  white-space: pre-wrap;
+  line-height: 2.2;
+  white-space: normal;
+}
+
+.message-content :is(p, h1, h2, h3, h4, h5, h6) {
+  margin: 2px 0;
+}
+
+.message-content :is(ul, ol) {
+  margin: 4px 0 0;
+  padding-left: 1.2em;
+}
+
+.message-content li {
+  margin: 0;
 }
 
 .typing-dot {
