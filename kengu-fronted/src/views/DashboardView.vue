@@ -1,6 +1,5 @@
 <template>
   <div class="dashboard-page">
-    <!-- 顶部进度条 - 与query页面风格统一 -->
     <el-progress
       v-if="isUpdating"
       :percentage="updateProgress"
@@ -62,6 +61,16 @@
       <!-- 左侧日历区域 -->
       <div class="calendar-container">
         <h3 class="section-title">Calendar</h3>
+        <el-button 
+            size="small" 
+            type="primary" 
+            icon="Refresh" 
+            @click="loadAllAssignments"
+            :loading="isLoading || isUpdating"
+            style="margin-bottom: 8px;"
+          >
+            Update Assignments
+          </el-button>
         <el-card class="calendar-card">
           <!-- 日历头部 -->
           <div class="calendar-header">
@@ -620,7 +629,6 @@ function cleanup() {
   }
 }
 
-// 获取课程名称
 const getCourseName = async (courseId) => {
   try {
     const courseIdNum = Number(courseId);
