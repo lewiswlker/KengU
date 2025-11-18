@@ -405,12 +405,12 @@ const clearInput = () => {
 const formatMessage = (content) => {
   if (!content) return "";
   try {
-    // 连续3个及以上换行变成2个，保留段落分隔
-    const normalized = content.replace(/\n{3,}/g, '\n\n');
-    const rawHtml = marked.parse(normalized);
+    const rawHtml = marked.parse(content);
+    // Sanitize to prevent XSS
     return DOMPurify.sanitize(rawHtml);
   } catch (e) {
-    return content.replace(/\n+/g, "<br/>");
+    // Fallback: preserve simple line breaks
+    return content.replace(/\n/g, "<br/>");
   }
 };
 
@@ -521,7 +521,7 @@ const submitQuestion = async () => {
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\t\t");
+      const lines = buffer.split("\n\n");
       for (const line of lines) {
         if (line.startsWith("data: ") && line.trim() !== "data: ") {
           try {
@@ -805,8 +805,12 @@ const handleUpdateAllCourses = async () => {
   animation: rotate 1.5s linear infinite;
 }
 @keyframes rotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .course-list {
@@ -895,7 +899,7 @@ const handleUpdateAllCourses = async () => {
   max-width: 85%;
   padding: 12px 16px;
   border-radius: 8px;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 .user-message {
@@ -933,9 +937,75 @@ const handleUpdateAllCourses = async () => {
   opacity: 0.7;
 }
 
+/* 4. 链接样式 */
+::v-deep .message-content a {
+  color: #0a4a1f;
+  text-decoration: underline;
+  border-radius: 2px;
+  transition: all 0.2s;
+}
+::v-deep .message-content a:hover {
+  color: #073416;
+  background-color: rgba(10, 74, 31, 0.05);
+  text-decoration: none;
+}
+
+/* 5. 代码块与行内代码 */
+::v-deep .message-content code {
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  font-family: monospace;
+}
+::v-deep .message-content pre {
+  background-color: #f5f7fa;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 8px 0 !important;
+}
+::v-deep .message-content pre code {
+  background: transparent;
+}
+
+/* 6. 引用块 */
+::v-deep .message-content blockquote {
+  border-left: 3px solid #0a4a1f;
+  background-color: rgba(10, 74, 31, 0.03);
+  color: #555;
+  border-radius: 0 4px 4px 0;
+  margin: 8px 0 !important;
+}
+
+/* 8. 表格（如果需要支持） */
+::v-deep .message-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0 !important;
+}
+::v-deep .message-content th,
+::v-deep .message-content td {
+  text-align: left;
+}
+::v-deep .message-content th {
+  background-color: rgba(10, 74, 31, 0.05);
+}
+
+/* 统一段落、标题、列表项等的上下间距 */
+.message-content :is(p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, pre, table, hr) {
+  margin: 2px !important;
+}
+.message-content :is(ul, ol) {
+  margin: 4px 0 0;
+  padding-left: 1.2em;
+}
+
+.message-content li {
+  margin: 0;
+}
+/* 保持字体和行高 */
 .message-content {
   font-size: 15px;
-  white-space: pre-wrap;
+  line-height: 2.5;
+  white-space: normal;
 }
 
 .typing-dot {
@@ -943,8 +1013,13 @@ const handleUpdateAllCourses = async () => {
   margin-left: 4px;
 }
 @keyframes blink {
-  0%, 100% { opacity: 0; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .message-sources {
@@ -1226,72 +1301,6 @@ const handleUpdateAllCourses = async () => {
   color: #333;
   border-color: #bbb;
   background-color: #f5f5f5;
-}
-
-::v-deep .el-dropdown-menu__item {
-  color: #0a4a1f !important; /* 自定义默认颜色 */
-  background-color: rgba(255, 255, 255, 0.05) !important;
-}
-
-/* 悬停状态：设置高亮颜色 */
-::v-deep .el-dropdown-menu__item:hover {
-  color: #0a4a1f !important; /* 自定义悬停颜色 */
-  background-color: rgba(10, 74, 31, 0.05) !important;
-}
-
-/* 分割线样式 */
-::v-deep .el-dropdown-menu__item.divided {
-  border-top-color: #eee !important;
-}
-
-::v-deep .message-content {
-  /* 确保内容块有足够间距 */
-  line-height: 1.8;
-}
-
-
-/* 统一段落间距为 8px 0，不改变字体大小 */
-::v-deep .message-content p,
-::v-deep .message-content ul,
-::v-deep .message-content ol,
-::v-deep .message-content li,
-::v-deep .message-content blockquote,
-::v-deep .message-content pre
-::v-deep .message-content table,
-::v-deep .message-content hr {
-  margin-top: 2px !important;
-  margin-bottom: 2px !important;
-}
-
-/* 细节优化：去除 li 内部多余间距 */
-::v-deep .message-content li {
-  margin-left: 0;
-  padding-left: 0;
-}
-
-/* 保持换行符高度紧凑 */
-::v-deep .message-content br {
-  display: block;
-  height: 0.1em;
-  margin: 0;
-  line-height: 1;
-}
-
-/* 8. 表格（如果需要支持） */
-::v-deep .message-content table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 12px 0;
-}
-::v-deep .message-content th,
-::v-deep .message-content td {
-  border: 1px solid #eaecef;
-  padding: 8px 12px;
-  text-align: left;
-}
-::v-deep .message-content th {
-  background-color: rgba(10, 74, 31, 0.05);
-  font-weight: 600;
 }
 
 @media (max-width: 768px) {
