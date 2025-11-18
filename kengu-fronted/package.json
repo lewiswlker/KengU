@@ -22,6 +22,10 @@
     "vue": "^3.2.13",
     "vue-router": "^4.6.3"
   },
+  "optionalDependencies": {
+    "dompurify": "^3.3.0",
+    "marked": "^6.0.0"
+  },
   "devDependencies": {
     "@babel/core": "^7.12.16",
     "@babel/eslint-parser": "^7.12.16",

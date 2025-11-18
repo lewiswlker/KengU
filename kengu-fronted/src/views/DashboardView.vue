@@ -1,6 +1,5 @@
 <template>
   <div class="dashboard-page">
-    <!-- 顶部进度条 - 与query页面风格统一 -->
     <el-progress
       v-if="isUpdating"
       :percentage="updateProgress"
@@ -62,6 +61,16 @@
       <!-- 左侧日历区域 -->
       <div class="calendar-container">
         <h3 class="section-title">Calendar</h3>
+        <el-button 
+            size="small" 
+            type="primary" 
+            icon="Refresh" 
+            @click="loadAllAssignments"
+            :loading="isLoading || isUpdating"
+            style="margin-bottom: 8px;"
+          >
+            Update Assignments
+          </el-button>
         <el-card class="calendar-card">
           <!-- 日历头部 -->
           <div class="calendar-header">
@@ -227,8 +236,12 @@
                     KengU Assistant
                     <span class="message-time">{{ new Date().toLocaleString() }}</span>
                   </div>
-                  <div class="message-content">
-                    {{ currentAiContent }}<span class="typing-dot">●</span>
+                  <div class="message-content-wrapper">
+                    <div
+                      class="message-content"
+                      v-html="formatMessage(currentAiContent)"
+                    ></div>
+                    <span class="typing-dot">●</span>
                   </div>
                 </div>
               </div>
@@ -298,6 +311,8 @@
 <script setup>
 import { ref, watch, nextTick, onMounted, onUnmounted, computed, onDeactivated } from 'vue';
 import { useRouter } from 'vue-router';
+import { marked } from 'marked';   // Markdown 解析库
+import DOMPurify from 'dompurify'; // HTML 安全过滤库
 import { useUserStore } from '../stores/user';
 import { User, ArrowDown, Search, Document } from '@element-plus/icons-vue';
 import { ElMessage, ElLoading, ElMessageBox, ElProgress } from 'element-plus';
@@ -614,7 +629,6 @@ function cleanup() {
   }
 }
 
-// 获取课程名称
 const getCourseName = async (courseId) => {
   try {
     const courseIdNum = Number(courseId);
@@ -662,7 +676,18 @@ const clearInput = () => {
   selectedCourses.value = [];
 };
 
-const formatMessage = (content) => content.replace(/\n/g, '<br/>');
+const formatMessage = (content) => {
+  if (!content) return '';
+  try {
+    // 1. 用 marked 将 Markdown 解析为原始 HTML
+    const rawHtml = marked.parse(content);
+    // 2. 用 DOMPurify 过滤危险 HTML（防止 XSS 攻击）
+    return DOMPurify.sanitize(rawHtml);
+  } catch (e) {
+    // 异常 fallback：仅替换换行符为 <br>
+    return content.replace(/\n/g, '<br/>');
+  }
+};
 
 const stopGeneration = () => {
   if (abortController.value) {
@@ -1608,6 +1633,129 @@ const updateTodoStatus = async (event) => {
     width: 100%;
     margin-bottom: 20px;
   }
+}
+
+::v-deep .message-content {
+  /* 确保内容块有足够间距 */
+  line-height: 1.8;
+}
+
+/* 1. 标题样式（h1-h6） */
+::v-deep .message-content h1 {
+  font-size: 22px;
+  margin: 16px 0 8px;
+  font-weight: 600;
+  border-bottom: 1px solid #eaecef;
+  padding-bottom: 4px;
+}
+::v-deep .message-content h2 {
+  font-size: 20px;
+  margin: 14px 0 6px;
+  font-weight: 600;
+}
+::v-deep .message-content h3 {
+  font-size: 18px;
+  margin: 12px 0 4px;
+  font-weight: 600;
+}
+::v-deep .message-content h4,
+::v-deep .message-content h5,
+::v-deep .message-content h6 {
+  font-size: 16px;
+  margin: 10px 0 2px;
+  font-weight: 600;
+}
+
+/* 2. 段落与换行 */
+::v-deep .message-content p {
+  margin: 10px 0;
+}
+
+/* 3. 列表（有序/无序） */
+::v-deep .message-content ul,
+::v-deep .message-content ol {
+  margin: 10px 0 10px 24px;
+  padding: 0;
+}
+::v-deep .message-content li {
+  margin: 6px 0;
+  line-height: 1.6;
+}
+/* 有序列表数字颜色 */
+::v-deep .message-content ol li::marker {
+  font-weight: 500;
+}
+
+/* 4. 链接样式 */
+::v-deep .message-content a {
+  color: #0a4a1f;
+  text-decoration: underline;
+  padding: 0 2px;
+  border-radius: 2px;
+  transition: all 0.2s;
+}
+::v-deep .message-content a:hover {
+  color: #073416;
+  background-color: rgba(10, 74, 31, 0.05);
+  text-decoration: none;
+}
+
+/* 5. 代码块与行内代码 */
+/* 行内代码 */
+::v-deep .message-content code {
+  background-color: #f5f7fa;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: monospace;
+}
+/* 代码块 */
+::v-deep .message-content pre {
+  background-color: #f5f7fa;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+::v-deep .message-content pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 13px;
+}
+
+/* 6. 引用块 */
+::v-deep .message-content blockquote {
+  border-left: 3px solid #0a4a1f;
+  padding: 8px 12px 8px 16px;
+  margin: 12px 0;
+  background-color: rgba(10, 74, 31, 0.03);
+  color: #555;
+  border-radius: 0 4px 4px 0;
+}
+
+/* 7. 分隔线 */
+::v-deep .message-content hr {
+  border: none;
+  border-top: 1px dashed #eaecef;
+  margin: 16px 0;
+}
+
+/* 8. 表格（如果需要支持） */
+::v-deep .message-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+}
+::v-deep .message-content th,
+::v-deep .message-content td {
+  border: 1px solid #eaecef;
+  padding: 8px 12px;
+  text-align: left;
+}
+::v-deep .message-content th {
+  background-color: rgba(10, 74, 31, 0.05);
+  font-weight: 600;
 }
 
 @media (max-width: 768px) {
