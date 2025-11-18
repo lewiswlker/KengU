@@ -50,8 +50,8 @@ class LLMConfig:
         self.timeout = timeout
 
     @staticmethod
-    def openai_api(api_key: str, model: str = "gpt-4") -> "LLMConfig":
-        return LLMConfig(provider="openai", api_key=api_key, model=model, base_url="https://api.openai.com/v1")
+    def openai_api(api_key: str, model: str = "gpt-4",base_url="https://dashscope.aliyuncs.com/compatible-mode/v1") -> "LLMConfig":
+        return LLMConfig(provider="openai", api_key=api_key, model=model, base_url=base_url)
 
     @staticmethod
     def local_ollama(base_url: str = "http://localhost:11434", model: str = "deepseek-r1:1.5b") -> "LLMConfig":
