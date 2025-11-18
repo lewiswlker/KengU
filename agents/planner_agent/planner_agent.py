@@ -236,12 +236,163 @@ class PlannerAgent:
 
         self._append_conversation(user_id, 'user', message)
 
+        # Quick rule: if user asks about their courses, return course list directly
+        low = message.lower()
+        course_query_keywords = ["有哪些课", "我有哪些课", "有哪些课程", "查看我有哪些课"]
+        try:
+            if any(k in low for k in course_query_keywords):
+                # Prefer progress info if available
+                try:
+                    progress_list = self.user_course_dao.get_course_progress(user_id)
+                except Exception:
+                    progress_list = []
+                try:
+                    active_courses = self.user_course_dao.get_user_active_courses(user_id)
+                except Exception:
+                    active_courses = []
+
+                if not active_courses and not progress_list:
+                    reply = "您当前没有已选课程。"
+                else:
+                    # Build mapping of progress by course_name
+                    prog_map = {p.get('course_name'): p for p in progress_list} if progress_list else {}
+                    lines = []
+                    # Use active_courses order; fall back to progress_list if needed
+                    if active_courses:
+                        for c in active_courses:
+                            cname = c.get('course_name') or c.get('course') or 'Unknown Course'
+                            prog = prog_map.get(cname, {}).get('progress_percentage') if prog_map else None
+                            if prog is not None:
+                                lines.append(f"- {cname} (进度: {prog}%)")
+                            else:
+                                lines.append(f"- {cname}")
+                    else:
+                        for p in progress_list:
+                            lines.append(f"- {p.get('course_name')} (进度: {p.get('progress_percentage')}%)")
+
+                    reply = "您当前的课程：\n" + "\n".join(lines)
+
+                self._append_conversation(user_id, 'assistant', reply)
+                return ChatResult(reply=reply)
+        except Exception:
+            # On any unexpected error, fall back to LLM path
+            pass
+
         # Check if user is responding to a previous question
         conv = self._conversations.get(user_id, [])
         if len(conv) >= 2 and conv[-2]['role'] == 'assistant' and '是否要添加为新任务' in conv[-2]['content'] and message.lower().strip() in ['是', 'yes', 'y']:
             reply = "好的，请提供作业的课程名和截止日期，例如：课程 COMP7103 Data Mining，截止 2025-11-20。"
             self._append_conversation(user_id, 'assistant', reply)
             return ChatResult(reply=reply)
+
+        # Heuristic: if the user is adding an assignment and already mentions a course, try to add it directly
+        try:
+            import re
+            add_keywords = ["添加一个assignment", "添加assignment", "添加作业", "新建作业", "添加一个作业", "创建作业"]
+            if any(k in message for k in add_keywords) or message.strip().startswith("添加"):
+                # try to extract course code or course name
+                course_name = None
+                # common patterns: '属于课程COMP7103', '属于课程 COMP7103', '课程COMP7103', '课程 COMP7103'
+                m = re.search(r"属于课程\s*([A-Za-z0-9\-\s]+)", message)
+                if not m:
+                    m = re.search(r"课程\s*([A-Za-z0-9\-\s]+)", message)
+                if m:
+                    course_name = m.group(1).strip()
+                # Also accept patterns like '它属于课程COMP7103' or '属于COMP7103'
+                if not course_name:
+                    m2 = re.search(r"属于\s*([A-Za-z0-9\-]+)", message)
+                    if m2:
+                        course_name = m2.group(1).strip()
+
+                if course_name:
+                    try:
+                        active_courses = self.user_course_dao.get_user_active_courses(user_id)
+                    except Exception:
+                        active_courses = []
+
+                    found_course = None
+                    for c in active_courses:
+                        cname = (c.get('course_name') or '')
+                        # match by substrings or by exact code
+                        if course_name.lower() in cname.lower() or course_name.lower() == (cname.split()[0].lower() if cname else ''):
+                            found_course = c
+                            break
+
+                    if found_course:
+                        # extract title and due date
+                        title = None
+                        tm = re.search(r"叫\s*([^，,。\n]+)", message)
+                        if tm:
+                            title = tm.group(1).strip()
+                        else:
+                            # fallback: pick phrase after '添加' up to comma
+                            tm2 = re.search(r"添加[一个]?\s*([^，,。]+)", message)
+                            if tm2:
+                                title = tm2.group(1).strip()
+                        if not title:
+                            title = "New Assignment"
+
+                        due = None
+                        dm = re.search(r"(\d{4}[/-]\d{1,2}[/-]\d{1,2})", message)
+                        if dm:
+                            try:
+                                due = datetime.strptime(dm.group(1).replace('/', '-'), "%Y-%m-%d")
+                            except Exception:
+                                due = None
+
+                        # Resolve external course_id stored in courses.course_id.
+                        # user_course DAO returns internal courses.id in the 'course_id' field.
+                        external_course_id = None
+                        try:
+                            internal_id = found_course.get('course_id') or found_course.get('id')
+                            all_courses = self.course_dao.get_all_courses()
+                            for cr in all_courses:
+                                # cr has keys 'id' (internal) and 'course_id' (external)
+                                if cr.get('id') == internal_id:
+                                    external_course_id = cr.get('course_id')
+                                    break
+                        except Exception:
+                            external_course_id = None
+
+                        # Fallback: if not resolved, try to use provided value (may be external already)
+                        if not external_course_id:
+                            try:
+                                # attempt to coerce numeric-like values
+                                external_course_id = int(found_course.get('course_id')) if found_course.get('course_id') else None
+                            except Exception:
+                                external_course_id = None
+
+                        assignment_data = {
+                            'title': title,
+                            'description': None,
+                            'course_id': external_course_id,
+                            'user_id': user_id,
+                            'due_date': due or datetime.now(),
+                            'status': 'pending'
+                        }
+
+                        try:
+                            success = self.assignment_dao.insert_assignment(assignment_data)
+                        except Exception as e:
+                            # log error for diagnosis
+                            print(f"Failed to insert assignment for user {user_id}, course internal_id={found_course.get('course_id')}, resolved external_course_id={external_course_id}: {e}")
+                            success = False
+
+                        if success:
+                            due_text = dm.group(1) if dm else '未指定'
+                            reply = f"已为课程 '{found_course.get('course_name')}' 添加作业 '{title}'，截止: {due_text}。"
+                        else:
+                            reply = "尝试添加作业，但失败。"
+
+                        self._append_conversation(user_id, 'assistant', reply)
+                        return ChatResult(reply=reply)
+                    else:
+                        reply = "我没有在您的选课中找到该课程，是否要将这门课程添加到您的课程列表并创建该作业？"
+                        self._append_conversation(user_id, 'assistant', reply)
+                        return ChatResult(reply=reply)
+        except Exception:
+            # if heuristic fails, continue to LLM path
+            pass
 
         system_prompt = (
             "你是课程规划助手。你可以建议计划、识别用户意图并返回结构化动作。\n"
@@ -253,6 +404,7 @@ class PlannerAgent:
             "当用户说“作业X其实还没完成”时，返回 JSON: {\"action\":\"unmark_complete\", \"assignment_title\": \"...\"}\n"
             "当用户说“删除学习记录X”时，返回 JSON: {\"action\":\"delete_study_session\", \"assignment_title\": \"...\"}\n"
             "当用户问“X月份的时间安排计划”时，返回 JSON: {\"action\":\"generate_monthly_plan\", \"month\": \"X\"}\n例如，如果用户说“11月份的时间安排计划”，返回 {\"action\":\"generate_monthly_plan\", \"month\": \"11\"}\n"
+            "当用户说“帮我规划X课程”时，返回 JSON: {\"action\":\"generate_course_plan\", \"course_name\": \"X\"}\n"
             "当用户说“为作业X添加笔记Y”时，返回 JSON: {\"action\":\"add_note\", \"assignment_title\": \"X\", \"note\": \"Y\"}\n"
             "当用户说“上传附件到作业X，路径Y”时，返回 JSON: {\"action\":\"upload_attachment\", \"assignment_title\": \"X\", \"path\": \"Y\"}\n"
             "仅返回 JSON，不要额外解释，除非无法识别意图则返回 {\"action\":\"reply\", \"message\":\"...\"}\n"
@@ -407,6 +559,31 @@ class PlannerAgent:
             plan_user = f"{month}月份作业:\n{assign_text}\n\n学习记录:\n{session_text}"
             plan = self.call_llm(plan_sys, plan_user)
             reply = f"{month}月份时间安排计划:\n{plan}"
+            self._append_conversation(user_id, 'assistant', reply)
+            return ChatResult(reply=reply)
+
+        elif action == 'generate_course_plan':
+            course_name = parsed.get('course_name')
+            if not course_name:
+                reply = "课程名不能为空。"
+                self._append_conversation(user_id, 'assistant', reply)
+                return ChatResult(reply=reply)
+
+            # Get assignments for the course
+            all_assignments = self.assignment_dao.get_assignments_by_date_range(user_id, datetime.now() - timedelta(days=365), datetime.now() + timedelta(days=365))
+            course_assignments = [a for a in all_assignments if a.get('course_name') and course_name.lower() in a.get('course_name').lower()]
+
+            # Get study sessions for the course
+            all_sessions = self.study_session_dao.get_study_sessions_by_date_range(user_id, datetime.now() - timedelta(days=365), datetime.now() + timedelta(days=365))
+            course_sessions = [s for s in all_sessions if s.get('course_name') and course_name.lower() in s.get('course_name').lower()]
+
+            assign_text = "\n".join([f"- {a['title']} 截止: {a['due_date']}, 状态: {a['status']}, 描述: {a.get('description', '无')}, 笔记: {a.get('notes', '无')}, 附件: {a.get('assignment_path', '无')}" for a in course_assignments])
+            session_text = "\n".join([f"- {s['assignment_title']} 时长: {s['duration_minutes']}分钟, 时间: {s['start_time']}, 笔记: {s.get('notes', '无')}" for s in course_sessions])
+
+            plan_sys = "你是课程规划助手。根据用户的作业（包括描述、笔记、附件）和学习记录（包括笔记），为X课程生成详细学习计划，包括时间安排、优先级和建议。用中文回复。"
+            plan_user = f"{course_name}作业:\n{assign_text}\n\n学习记录:\n{session_text}"
+            plan = self.call_llm(plan_sys, plan_user)
+            reply = f"{course_name}课程学习计划:\n{plan}"
             self._append_conversation(user_id, 'assistant', reply)
             return ChatResult(reply=reply)
 
