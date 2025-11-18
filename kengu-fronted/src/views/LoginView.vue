@@ -46,7 +46,7 @@
             @click="handleLogin"
             :loading="isLoading"
           >
-            Log In
+            Login
           </el-button>
           <!-- 登录提示文字：登录流程（含初始化）完成前显示 -->
           <p v-if="showLoginHint" class="login-hint">
