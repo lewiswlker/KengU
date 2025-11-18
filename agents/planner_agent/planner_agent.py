@@ -136,18 +136,34 @@ class PlannerAgent:
             return f"错误：无法生成回答。{str(e)}"
 
     def _call_openai(self, system_prompt: str, user_prompt: str) -> str:
-        import openai
-        openai.api_key = self.llm_config.api_key
-        response = openai.ChatCompletion.create(
-            model=self.llm_config.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=self.llm_config.temperature,
-            max_tokens=self.llm_config.max_tokens
-        )
-        return response['choices'][0]['message']['content']
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=self.llm_config.api_key, base_url=self.llm_config.base_url or "https://api.openai.com/v1")
+            response = client.chat.completions.create(
+                model=self.llm_config.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=self.llm_config.temperature,
+                max_tokens=self.llm_config.max_tokens
+            )
+            return response.choices[0].message.content
+        except ImportError:
+            # Fallback to old API if new version not available
+            import openai
+            openai.api_key = self.llm_config.api_key
+            openai.api_base = self.llm_config.base_url or "https://api.openai.com/v1"
+            response = openai.ChatCompletion.create(
+                model=self.llm_config.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=self.llm_config.temperature,
+                max_tokens=self.llm_config.max_tokens
+            )
+            return response['choices'][0]['message']['content']
 
     def _call_ollama(self, system_prompt: str, user_prompt: str) -> str:
         url = f"{self.llm_config.base_url}/api/generate"
@@ -288,7 +304,7 @@ class PlannerAgent:
         # Heuristic: if the user is adding an assignment and already mentions a course, try to add it directly
         try:
             import re
-            add_keywords = ["添加一个assignment", "添加assignment", "添加作业", "新建作业", "添加一个作业", "创建作业"]
+            add_keywords = ["添加一个assignment", "添加assignment", "添加作业", "新建作业", "添加一个作业", "创建作业", "Add an assignment", "add assignment", "create assignment", "new assignment"]
             if any(k in message for k in add_keywords) or message.strip().startswith("添加"):
                 # try to extract course code or course name
                 course_name = None
@@ -296,6 +312,9 @@ class PlannerAgent:
                 m = re.search(r"属于课程\s*([A-Za-z0-9\-\s]+)", message)
                 if not m:
                     m = re.search(r"课程\s*([A-Za-z0-9\-\s]+)", message)
+                if not m:
+                    # English: "belongs to the course COMP7404", "course COMP7404"
+                    m = re.search(r"(?:belongs to the course|course)\s*([A-Za-z0-9\-\s]+)", message, re.IGNORECASE)
                 if m:
                     course_name = m.group(1).strip()
                 # Also accept patterns like '它属于课程COMP7103' or '属于COMP7103'
@@ -321,14 +340,18 @@ class PlannerAgent:
                     if found_course:
                         # extract title and due date
                         title = None
-                        tm = re.search(r"叫\s*([^，,。\n]+)", message)
-                        if tm:
-                            title = tm.group(1).strip()
-                        else:
-                            # fallback: pick phrase after '添加' up to comma
-                            tm2 = re.search(r"添加[一个]?\s*([^，,。]+)", message)
+                        # English: "called CC", "called AA"
+                        tm = re.search(r"called\s+([A-Za-z0-9]+)", message, re.IGNORECASE)
+                        if not tm:
+                            # Chinese: "叫\s*([^，,。\n]+)"
+                            tm = re.search(r"叫\s*([^，,。\n]+)", message)
+                        if not tm:
+                            # fallback: pick phrase after 'add' or '添加' up to comma
+                            tm2 = re.search(r"(?:add|添加)[^,。]*?([A-Za-z0-9]+)", message, re.IGNORECASE)
                             if tm2:
                                 title = tm2.group(1).strip()
+                        if tm:
+                            title = tm.group(1).strip()
                         if not title:
                             title = "New Assignment"
 
