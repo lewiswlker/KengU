@@ -34,7 +34,7 @@ async def chat_stream(request: ChatRequest):
                 selected_course_ids=request.selected_course_ids,
             ):
                 # Yield each chunk as SSE (Server-Sent Events) format
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                yield f"data: {json.dumps({'chunk': chunk})}\t\t"
 
         return StreamingResponse(
             generate(),
