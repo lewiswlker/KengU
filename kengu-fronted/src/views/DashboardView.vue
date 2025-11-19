@@ -1635,62 +1635,10 @@ const updateTodoStatus = async (event) => {
   }
 }
 
-::v-deep .message-content {
-  /* 确保内容块有足够间距 */
-  line-height: 1.8;
-}
-
-/* 1. 标题样式（h1-h6） */
-::v-deep .message-content h1 {
-  font-size: 22px;
-  margin: 16px 0 8px;
-  font-weight: 600;
-  border-bottom: 1px solid #eaecef;
-  padding-bottom: 4px;
-}
-::v-deep .message-content h2 {
-  font-size: 20px;
-  margin: 14px 0 6px;
-  font-weight: 600;
-}
-::v-deep .message-content h3 {
-  font-size: 18px;
-  margin: 12px 0 4px;
-  font-weight: 600;
-}
-::v-deep .message-content h4,
-::v-deep .message-content h5,
-::v-deep .message-content h6 {
-  font-size: 16px;
-  margin: 10px 0 2px;
-  font-weight: 600;
-}
-
-/* 2. 段落与换行 */
-::v-deep .message-content p {
-  margin: 10px 0;
-}
-
-/* 3. 列表（有序/无序） */
-::v-deep .message-content ul,
-::v-deep .message-content ol {
-  margin: 10px 0 10px 24px;
-  padding: 0;
-}
-::v-deep .message-content li {
-  margin: 6px 0;
-  line-height: 1.6;
-}
-/* 有序列表数字颜色 */
-::v-deep .message-content ol li::marker {
-  font-weight: 500;
-}
-
 /* 4. 链接样式 */
 ::v-deep .message-content a {
   color: #0a4a1f;
   text-decoration: underline;
-  padding: 0 2px;
   border-radius: 2px;
   transition: all 0.2s;
 }
@@ -1701,61 +1649,61 @@ const updateTodoStatus = async (event) => {
 }
 
 /* 5. 代码块与行内代码 */
-/* 行内代码 */
 ::v-deep .message-content code {
   background-color: #f5f7fa;
-  padding: 2px 6px;
   border-radius: 4px;
-  font-size: 14px;
   font-family: monospace;
 }
-/* 代码块 */
 ::v-deep .message-content pre {
   background-color: #f5f7fa;
   border-radius: 6px;
-  padding: 12px 16px;
-  margin: 12px 0;
   overflow-x: auto;
-  line-height: 1.5;
+  margin: 8px 0 !important;
 }
 ::v-deep .message-content pre code {
   background: transparent;
-  padding: 0;
-  font-size: 13px;
 }
 
 /* 6. 引用块 */
 ::v-deep .message-content blockquote {
   border-left: 3px solid #0a4a1f;
-  padding: 8px 12px 8px 16px;
-  margin: 12px 0;
   background-color: rgba(10, 74, 31, 0.03);
   color: #555;
   border-radius: 0 4px 4px 0;
-}
-
-/* 7. 分隔线 */
-::v-deep .message-content hr {
-  border: none;
-  border-top: 1px dashed #eaecef;
-  margin: 16px 0;
+  margin: 8px 0 !important;
 }
 
 /* 8. 表格（如果需要支持） */
 ::v-deep .message-content table {
   border-collapse: collapse;
   width: 100%;
-  margin: 12px 0;
+  margin: 8px 0 !important;
 }
 ::v-deep .message-content th,
 ::v-deep .message-content td {
-  border: 1px solid #eaecef;
-  padding: 8px 12px;
   text-align: left;
 }
 ::v-deep .message-content th {
   background-color: rgba(10, 74, 31, 0.05);
-  font-weight: 600;
+}
+
+/* 统一段落、标题、列表项等的上下间距 */
+.message-content :is(p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, pre, table, hr) {
+  margin: 2px !important;
+}
+.message-content :is(ul, ol) {
+  margin: 4px 0 0;
+  padding-left: 1.2em;
+}
+
+.message-content li {
+  margin: 0;
+}
+/* 保持字体和行高 */
+.message-content {
+  font-size: 15px;
+  line-height: 2.5;
+  white-space: normal;
 }
 
 @media (max-width: 768px) {
