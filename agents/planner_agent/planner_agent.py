@@ -130,10 +130,10 @@ class PlannerAgent:
             elif self.llm_config.provider == "local_api":
                 return self._call_local_api(system_prompt, user_prompt)
             else:
-                return f"错误：不支持的提供商 {self.llm_config.provider}"
+                return f"Error: Unsupported provider {self.llm_config.provider}"
         except Exception as e:
-            print(f"LLM 调用失败: {e}")
-            return f"错误：无法生成回答。{str(e)}"
+            print(f"LLM call failed: {e}")
+            return f"Error: Unable to generate response. {str(e)}"
 
     def _call_openai(self, system_prompt: str, user_prompt: str) -> str:
         try:
@@ -181,7 +181,7 @@ class PlannerAgent:
                 raw_response = raw_response.split('</think>', 1)[1].strip()
             return raw_response
         else:
-            raise Exception(f"Ollama API 错误: {response.status_code}")
+            raise Exception(f"Ollama API error: {response.status_code}")
 
     def _call_vllm(self, system_prompt: str, user_prompt: str) -> str:
         url = f"{self.llm_config.base_url}/v1/chat/completions"
@@ -198,7 +198,7 @@ class PlannerAgent:
         if response.status_code == 200:
             return response.json()['choices'][0]['message']['content']
         else:
-            raise Exception(f"vLLM API 错误: {response.status_code}")
+            raise Exception(f"vLLM API error: {response.status_code}")
 
     def _call_local_api(self, system_prompt: str, user_prompt: str) -> str:
         url = f"{self.llm_config.base_url}/chat"
@@ -221,7 +221,7 @@ class PlannerAgent:
             else:
                 return str(result)
         else:
-            raise Exception(f"本地 API 错误: {response.status_code}")
+            raise Exception(f"Local API error: {response.status_code}")
 
     # ================================================================
     # 配置管理方法
@@ -268,7 +268,7 @@ class PlannerAgent:
                     active_courses = []
 
                 if not active_courses and not progress_list:
-                    reply = "您当前没有已选课程。"
+                    reply = "You currently have no enrolled courses."
                 else:
                     # Build mapping of progress by course_name
                     prog_map = {p.get('course_name'): p for p in progress_list} if progress_list else {}
@@ -279,14 +279,14 @@ class PlannerAgent:
                             cname = c.get('course_name') or c.get('course') or 'Unknown Course'
                             prog = prog_map.get(cname, {}).get('progress_percentage') if prog_map else None
                             if prog is not None:
-                                lines.append(f"- {cname} (进度: {prog}%)")
+                                lines.append(f"- {cname} (Progress: {prog}%)")
                             else:
                                 lines.append(f"- {cname}")
                     else:
                         for p in progress_list:
-                            lines.append(f"- {p.get('course_name')} (进度: {p.get('progress_percentage')}%)")
+                            lines.append(f"- {p.get('course_name')} (Progress: {p.get('progress_percentage')}%)")
 
-                    reply = "您当前的课程：\n" + "\n".join(lines)
+                    reply = "Your current courses:\n" + "\n".join(lines)
 
                 self._append_conversation(user_id, 'assistant', reply)
                 return ChatResult(reply=reply)
@@ -297,7 +297,7 @@ class PlannerAgent:
         # Check if user is responding to a previous question
         conv = self._conversations.get(user_id, [])
         if len(conv) >= 2 and conv[-2]['role'] == 'assistant' and '是否要添加为新任务' in conv[-2]['content'] and message.lower().strip() in ['是', 'yes', 'y']:
-            reply = "好的，请提供作业的课程名和截止日期，例如：课程 COMP7103 Data Mining，截止 2025-11-20。"
+            reply = "Okay, please provide the course name and due date for the assignment, for example: Course COMP7103 Data Mining, due 2025-11-20."
             self._append_conversation(user_id, 'assistant', reply)
             return ChatResult(reply=reply)
 
@@ -402,15 +402,77 @@ class PlannerAgent:
                             success = False
 
                         if success:
-                            due_text = dm.group(1) if dm else '未指定'
-                            reply = f"已为课程 '{found_course.get('course_name')}' 添加作业 '{title}'，截止: {due_text}。"
+                            due_text = dm.group(1) if dm else 'not specified'
+                            reply = f"Added assignment '{title}' for course '{found_course.get('course_name')}', due: {due_text}."
                         else:
-                            reply = "尝试添加作业，但失败。"
+                            reply = "Attempted to add assignment, but failed."
 
                         self._append_conversation(user_id, 'assistant', reply)
                         return ChatResult(reply=reply)
                     else:
-                        reply = "我没有在您的选课中找到该课程，是否要将这门课程添加到您的课程列表并创建该作业？"
+                        # Course not found, try to add the course first
+                        try:
+                            # Parse course_id from course_name, e.g., COMP7404 -> 7404
+                            import re
+                            match = re.match(r'COMP(\d+)', course_name)
+                            if match:
+                                external_course_id = int(match.group(1))
+                                # Try to insert the course
+                                internal_course_id = self.course_dao.insert_name(course_name, external_course_id)
+                                if internal_course_id:
+                                    # Add to user courses
+                                    self.user_course_dao.insert_user_courses(user_id, internal_course_id)
+                                    reply = f"Added course '{course_name}' to your course list. Now adding the assignment."
+                                    self._append_conversation(user_id, 'assistant', reply)
+                                    # Now add the assignment
+                                    title = None
+                                    tm = re.search(r"called\s+([A-Za-z0-9]+)", message, re.IGNORECASE)
+                                    if not tm:
+                                        tm = re.search(r"叫\s*([^，,。\n]+)", message)
+                                    if not tm:
+                                        tm2 = re.search(r"(?:add|添加)[^,。]*?([A-Za-z0-9]+)", message, re.IGNORECASE)
+                                        if tm2:
+                                            title = tm2.group(1).strip()
+                                    if tm:
+                                        title = tm.group(1).strip()
+                                    if not title:
+                                        title = "New Assignment"
+
+                                    due = None
+                                    dm = re.search(r"(\d{4}[/-]\d{1,2}[/-]\d{1,2})", message)
+                                    if dm:
+                                        try:
+                                            due = datetime.strptime(dm.group(1).replace('/', '-'), "%Y-%m-%d")
+                                        except Exception:
+                                            due = None
+
+                                    assignment_data = {
+                                        'title': title,
+                                        'description': None,
+                                        'course_id': external_course_id,
+                                        'user_id': user_id,
+                                        'due_date': due or datetime.now(),
+                                        'status': 'pending'
+                                    }
+
+                                    try:
+                                        success = self.assignment_dao.insert_assignment(assignment_data)
+                                    except Exception as e:
+                                        print(f"Failed to insert assignment after adding course: {e}")
+                                        success = False
+
+                                    if success:
+                                        due_text = dm.group(1) if dm else 'not specified'
+                                        reply = f"Added assignment '{title}' for course '{course_name}', due: {due_text}."
+                                    else:
+                                        reply = "Attempted to add assignment, but failed."
+                                else:
+                                    reply = "Failed to add the course to your list."
+                            else:
+                                reply = "Could not parse course ID from course name."
+                        except Exception as e:
+                            reply = f"Error adding course: {str(e)}"
+
                         self._append_conversation(user_id, 'assistant', reply)
                         return ChatResult(reply=reply)
         except Exception:
@@ -418,22 +480,22 @@ class PlannerAgent:
             pass
 
         system_prompt = (
-            "你是课程规划助手。你可以建议计划、识别用户意图并返回结构化动作。\n"
-            "当用户说明\"我完成了作业 X\"时，返回 JSON: {\"action\":\"mark_complete\", \"assignment_title\": \"...\"}\n"
-            "当用户说明\"我复习了作业 X 花了 Y 小时\"时，返回 JSON: {\"action\":\"log_study_session\", \"assignment_title\": \"...\", \"duration_minutes\": 120}\n"
-            "当用户询问\"告诉我还需要完成的作业\"时，返回 JSON: {\"action\":\"list_pending\"}\n"
-            "如果用户提到新任务如“后天需要提交一份poster报告”，返回 JSON: {\"action\":\"reply\", \"message\":\"这是哪门课程的poster报告？截止日期是什么时候？\"}\n"
-            "如果用户说“我完成了作业 X”但未找到匹配，返回 JSON: {\"action\":\"reply\", \"message\":\"未找到该作业，是否要添加为新任务？\"}\n"
-            "当用户说“作业X其实还没完成”时，返回 JSON: {\"action\":\"unmark_complete\", \"assignment_title\": \"...\"}\n"
-            "当用户说“删除学习记录X”时，返回 JSON: {\"action\":\"delete_study_session\", \"assignment_title\": \"...\"}\n"
-            "当用户问“X月份的时间安排计划”时，返回 JSON: {\"action\":\"generate_monthly_plan\", \"month\": \"X\"}\n例如，如果用户说“11月份的时间安排计划”，返回 {\"action\":\"generate_monthly_plan\", \"month\": \"11\"}\n"
-            "当用户说“帮我规划X课程”时，返回 JSON: {\"action\":\"generate_course_plan\", \"course_name\": \"X\"}\n"
-            "当用户说“为作业X添加笔记Y”时，返回 JSON: {\"action\":\"add_note\", \"assignment_title\": \"X\", \"note\": \"Y\"}\n"
-            "当用户说“上传附件到作业X，路径Y”时，返回 JSON: {\"action\":\"upload_attachment\", \"assignment_title\": \"X\", \"path\": \"Y\"}\n"
-            "仅返回 JSON，不要额外解释，除非无法识别意图则返回 {\"action\":\"reply\", \"message\":\"...\"}\n"
+            "You are a course planning assistant. You can suggest plans, identify user intents, and return structured actions.\n"
+            "When the user says \"I completed assignment X\", return JSON: {\"action\":\"mark_complete\", \"assignment_title\": \"...\"}\n"
+            "When the user says \"I studied assignment X for Y hours\", return JSON: {\"action\":\"log_study_session\", \"assignment_title\": \"...\", \"duration_minutes\": 120}\n"
+            "When the user asks \"Tell me what assignments I still need to complete\", return JSON: {\"action\":\"list_pending\"}\n"
+            "If the user mentions a new task like \"I need to submit a poster report the day after tomorrow\", return JSON: {\"action\":\"reply\", \"message\":\"Which course is this poster report for? What is the deadline?\"}\n"
+            "If the user says \"I completed assignment X\" but no match is found, return JSON: {\"action\":\"reply\", \"message\":\"Assignment not found, do you want to add it as a new task?\"}\n"
+            "When the user says \"Assignment X is actually not completed yet\", return JSON: {\"action\":\"unmark_complete\", \"assignment_title\": \"...\"}\n"
+            "When the user says \"Delete study session X\", return JSON: {\"action\":\"delete_study_session\", \"assignment_title\": \"...\"}\n"
+            "When the user asks \"Schedule plan for month X\", return JSON: {\"action\":\"generate_monthly_plan\", \"month\": \"X\"}\nFor example, if the user says \"Schedule plan for November\", return {\"action\":\"generate_monthly_plan\", \"month\": \"11\"}\n"
+            "When the user says \"Help me plan course X\", return JSON: {\"action\":\"generate_course_plan\", \"course_name\": \"X\"}\n"
+            "When the user says \"Add note Y to assignment X\", return JSON: {\"action\":\"add_note\", \"assignment_title\": \"X\", \"note\": \"Y\"}\n"
+            "When the user says \"Upload attachment to assignment X, path Y\", return JSON: {\"action\":\"upload_attachment\", \"assignment_title\": \"X\", \"path\": \"Y\"}\n"
+            "Return only JSON, no extra explanation, unless intent cannot be identified, then return {\"action\":\"reply\", \"message\":\"...\"}\n"
         )
 
-        user_prompt = f"用户: {message}\n当前时间: {datetime.now().isoformat()}"
+        user_prompt = f"User: {message}\nCurrent time: {datetime.now().isoformat()}"
         llm_response = self.call_llm(system_prompt, user_prompt)
 
         # 尝试解析 LLM 返回的 JSON 指令
@@ -458,7 +520,7 @@ class PlannerAgent:
                     break
             if assign:
                 success = self.assignment_dao.mark_complete_by_id(assign['id'])
-                reply = f"已将作业 '{assign['title']}' 标记为完成。" if success else f"尝试标记作业 '{assign['title']}' 为完成，但失败。"
+                reply = f"Marked assignment '{assign['title']}' as complete." if success else f"Attempted to mark assignment '{assign['title']}' as complete, but failed."
                 self._append_conversation(user_id, 'assistant', reply)
                 return ChatResult(reply=reply)
             else:
@@ -470,11 +532,11 @@ class PlannerAgent:
                         completed_assign = a
                         break
                 if completed_assign:
-                    reply = f"作业 '{completed_assign['title']}' 已经标记为完成。"
+                    reply = f"Assignment '{completed_assign['title']}' is already marked as complete."
                     self._append_conversation(user_id, 'assistant', reply)
                     return ChatResult(reply=reply)
                 else:
-                    reply = "未找到该作业，是否要添加为新任务？"
+                    reply = "Assignment not found, do you want to add it as a new task?"
                     self._append_conversation(user_id, 'assistant', reply)
                     return ChatResult(reply=reply)
 
@@ -487,12 +549,12 @@ class PlannerAgent:
                     assign = a
                     break
             if not assign:
-                reply = "未找到该作业，无法取消完成状态。"
+                reply = "Assignment not found, cannot unmark as complete."
                 self._append_conversation(user_id, 'assistant', reply)
                 return ChatResult(reply=reply)
 
             success = self.assignment_dao.mark_incomplete_by_id(assign['id'])
-            reply = f"已将作业 '{assign['title']}' 标记为未完成。" if success else f"尝试取消作业 '{assign['title']}' 的完成状态，但失败。"
+            reply = f"Marked assignment '{assign['title']}' as incomplete." if success else f"Attempted to unmark assignment '{assign['title']}' as complete, but failed."
             self._append_conversation(user_id, 'assistant', reply)
             return ChatResult(reply=reply)
 
@@ -506,12 +568,12 @@ class PlannerAgent:
                     assign = a
                     break
             if not assign:
-                reply = f"未找到标题匹配为 '{title}' 的作业以记录学习时长。"
+                reply = f"No assignment found with title matching '{title}' to log study time."
                 self._append_conversation(user_id, 'assistant', reply)
                 return ChatResult(reply=reply)
 
             sid = self.study_session_dao.add_study_session(assign['id'], datetime.now(), int(duration), notes=parsed.get('notes'))
-            reply = f"已记录学习时长 {duration} 分钟，关联作业: {assign['title']} (session_id: {sid})。"
+            reply = f"Logged {duration} minutes of study time, associated with assignment: {assign['title']} (session_id: {sid})."
             self._append_conversation(user_id, 'assistant', reply)
             return ChatResult(reply=reply)
 
@@ -524,36 +586,36 @@ class PlannerAgent:
                     assign = a
                     break
             if not assign:
-                reply = f"未找到标题匹配为 '{title}' 的作业以删除学习记录。"
+                reply = f"No assignment found with title matching '{title}' to delete study session."
                 self._append_conversation(user_id, 'assistant', reply)
                 return ChatResult(reply=reply)
 
             sessions = self.study_session_dao.get_sessions_by_assignment_id(assign['id'])
             if not sessions:
-                reply = f"未找到与作业 '{assign['title']}' 关联的学习记录。"
+                reply = f"No study sessions found associated with assignment '{assign['title']}'."
                 self._append_conversation(user_id, 'assistant', reply)
                 return ChatResult(reply=reply)
 
             # 删除最新的学习记录
             latest_session = sessions[-1]
             self.study_session_dao.delete_study_session_by_id(latest_session['id'])
-            reply = f"已删除作业 '{assign['title']}' 的最新学习记录 (session_id: {latest_session['id']})。"
+            reply = f"Deleted the latest study session for assignment '{assign['title']}' (session_id: {latest_session['id']})."
             self._append_conversation(user_id, 'assistant', reply)
             return ChatResult(reply=reply)
 
         elif action == 'list_pending':
             pending = self.assignment_dao.get_pending_by_user(user_id)
             if not pending:
-                reply = "没有未完成的作业。"
+                reply = "No pending assignments."
             else:
-                lines = [f"- [{p.get('course_name')}] {p.get('title')} 截止: {p.get('due_date')}, 描述: {p.get('description', '无')}, 笔记: {p.get('notes', '无')}, 附件: {p.get('assignment_path', '无')}" for p in pending]
+                lines = [f"- [{p.get('course_name')}] {p.get('title')} due: {p.get('due_date')}, description: {p.get('description', 'none')}, notes: {p.get('notes', 'none')}, attachment: {p.get('assignment_path', 'none')}" for p in pending]
                 # Get user's study session stats
                 study_stats = self.study_session_dao.get_study_session_stats(user_id, days=30)
-                stats_text = f"用户最近30天学习统计：总学习时长 {study_stats['total_study_hours']} 小时，平均每次 {study_stats['avg_duration']} 分钟，活跃天数 {study_stats['active_days']} 天。"
-                brief_sys = "你是日程规划助手，根据以下待办项（包括描述、笔记、附件）和用户学习历史，生成一个个性化学习计划（3-5条建议），尽可能解析附件了解要求、时间安排等。用中文回复。"
-                brief_user = stats_text + "\n\n待办项：\n" + "\n".join(lines)
+                stats_text = f"User's recent 30-day study stats: total study hours {study_stats['total_study_hours']} hours, average per session {study_stats['avg_duration']} minutes, active days {study_stats['active_days']} days."
+                brief_sys = "You are a schedule planning assistant. Based on the following pending items (including descriptions, notes, attachments) and the user's study history, generate a personalized study plan (3-5 suggestions). Try to parse attachments to understand requirements, time arrangements, etc. Reply in English."
+                brief_user = stats_text + "\n\nPending items:\n" + "\n".join(lines)
                 suggestion = self.call_llm(brief_sys, brief_user)
-                reply = "未完成作业:\n" + "\n".join(lines) + "\n\n建议计划:\n" + suggestion
+                reply = "Pending assignments:\n" + "\n".join(lines) + "\n\nSuggested plan:\n" + suggestion
             self._append_conversation(user_id, 'assistant', reply)
             return ChatResult(reply=reply)
 
@@ -568,27 +630,27 @@ class PlannerAgent:
                 else:
                     end_date = datetime(year, month_int + 1, 1) - timedelta(days=1)
             except:
-                reply = "月份格式错误，请输入如'11'。"
+                reply = "Invalid month format, please enter something like '11'."
                 self._append_conversation(user_id, 'assistant', reply)
                 return ChatResult(reply=reply)
 
             assignments = self.assignment_dao.get_assignments_by_date_range(user_id, start_date, end_date)
             study_sessions = self.study_session_dao.get_study_sessions_by_date_range(user_id, start_date, end_date)
 
-            assign_text = "\n".join([f"- {a['title']} ({a['course_name']}) 截止: {a['due_date']}, 状态: {a['status']}, 描述: {a.get('description', '无')}, 笔记: {a.get('notes', '无')}, 附件: {a.get('assignment_path', '无')}" for a in assignments])
-            session_text = "\n".join([f"- {s['assignment_title']} ({s['course_name']}) 时长: {s['duration_minutes']}分钟, 时间: {s['start_time']}, 笔记: {s.get('notes', '无')}" for s in study_sessions])
+            assign_text = "\n".join([f"- {a['title']} ({a['course_name']}) due: {a['due_date']}, status: {a['status']}, description: {a.get('description', 'none')}, notes: {a.get('notes', 'none')}, attachment: {a.get('assignment_path', 'none')}" for a in assignments])
+            session_text = "\n".join([f"- {s['assignment_title']} ({s['course_name']}) duration: {s['duration_minutes']} minutes, time: {s['start_time']}, notes: {s.get('notes', 'none')}" for s in study_sessions])
 
-            plan_sys = "你是时间管理助手。根据用户的作业（包括描述、笔记、附件）和学习记录（包括笔记），生成X月份的详细计划，包括一个文本形式的甘特图（用字符表示，如[Task] [-----] 1-5）。尽可能解析附件了解要求、时间安排等。用中文回复。"
-            plan_user = f"{month}月份作业:\n{assign_text}\n\n学习记录:\n{session_text}"
+            plan_sys = "You are a time management assistant. Based on the user's assignments (including descriptions, notes, attachments) and study records (including notes), generate a detailed plan for month X, including a text-based Gantt chart (represented with characters like [Task] [-----] 1-5). Try to parse attachments to understand requirements, time arrangements, etc. Reply in English."
+            plan_user = f"{month} month assignments:\n{assign_text}\n\nStudy records:\n{session_text}"
             plan = self.call_llm(plan_sys, plan_user)
-            reply = f"{month}月份时间安排计划:\n{plan}"
+            reply = f"{month} month schedule plan:\n{plan}"
             self._append_conversation(user_id, 'assistant', reply)
             return ChatResult(reply=reply)
 
         elif action == 'generate_course_plan':
             course_name = parsed.get('course_name')
             if not course_name:
-                reply = "课程名不能为空。"
+                reply = "Course name cannot be empty."
                 self._append_conversation(user_id, 'assistant', reply)
                 return ChatResult(reply=reply)
 
@@ -600,13 +662,13 @@ class PlannerAgent:
             all_sessions = self.study_session_dao.get_study_sessions_by_date_range(user_id, datetime.now() - timedelta(days=365), datetime.now() + timedelta(days=365))
             course_sessions = [s for s in all_sessions if s.get('course_name') and course_name.lower() in s.get('course_name').lower()]
 
-            assign_text = "\n".join([f"- {a['title']} 截止: {a['due_date']}, 状态: {a['status']}, 描述: {a.get('description', '无')}, 笔记: {a.get('notes', '无')}, 附件: {a.get('assignment_path', '无')}" for a in course_assignments])
-            session_text = "\n".join([f"- {s['assignment_title']} 时长: {s['duration_minutes']}分钟, 时间: {s['start_time']}, 笔记: {s.get('notes', '无')}" for s in course_sessions])
+            assign_text = "\n".join([f"- {a['title']} due: {a['due_date']}, status: {a['status']}, description: {a.get('description', 'none')}, notes: {a.get('notes', 'none')}, attachment: {a.get('assignment_path', 'none')}" for a in course_assignments])
+            session_text = "\n".join([f"- {s['assignment_title']} duration: {s['duration_minutes']} minutes, time: {s['start_time']}, notes: {s.get('notes', 'none')}" for s in course_sessions])
 
-            plan_sys = "你是课程规划助手。根据用户的作业（包括描述、笔记、附件）和学习记录（包括笔记），为X课程生成详细学习计划，包括时间安排、优先级和建议。用中文回复。"
-            plan_user = f"{course_name}作业:\n{assign_text}\n\n学习记录:\n{session_text}"
+            plan_sys = "You are a course planning assistant. Based on the user's assignments (including descriptions, notes, attachments) and study records (including notes), generate a detailed study plan for course X, including time arrangements, priorities, and suggestions. Reply in English."
+            plan_user = f"{course_name} assignments:\n{assign_text}\n\nStudy records:\n{session_text}"
             plan = self.call_llm(plan_sys, plan_user)
-            reply = f"{course_name}课程学习计划:\n{plan}"
+            reply = f"{course_name} course study plan:\n{plan}"
             self._append_conversation(user_id, 'assistant', reply)
             return ChatResult(reply=reply)
 
@@ -620,12 +682,12 @@ class PlannerAgent:
                     assign = a
                     break
             if not assign:
-                reply = f"未找到标题匹配为 '{title}' 的作业以添加笔记。"
+                reply = f"No assignment found with title matching '{title}' to add note."
                 self._append_conversation(user_id, 'assistant', reply)
                 return ChatResult(reply=reply)
 
             success = self.assignment_dao.update_notes_by_id(assign['id'], note)
-            reply = f"已为作业 '{assign['title']}' 添加笔记。" if success else f"尝试为作业 '{assign['title']}' 添加笔记，但失败。"
+            reply = f"Added note to assignment '{assign['title']}'." if success else f"Attempted to add note to assignment '{assign['title']}', but failed."
             self._append_conversation(user_id, 'assistant', reply)
             return ChatResult(reply=reply)
 
@@ -639,12 +701,12 @@ class PlannerAgent:
                     assign = a
                     break
             if not assign:
-                reply = f"未找到标题匹配为 '{title}' 的作业以上传附件。"
+                reply = f"No assignment found with title matching '{title}' to upload attachment."
                 self._append_conversation(user_id, 'assistant', reply)
                 return ChatResult(reply=reply)
 
             success = self.assignment_dao.update_path_by_id(assign['id'], path)
-            reply = f"已为作业 '{assign['title']}' 上传附件，路径: {path}。" if success else f"尝试为作业 '{assign['title']}' 上传附件，但失败。"
+            reply = f"Uploaded attachment to assignment '{assign['title']}', path: {path}." if success else f"Attempted to upload attachment to assignment '{assign['title']}', but failed."
             self._append_conversation(user_id, 'assistant', reply)
             return ChatResult(reply=reply)
 
@@ -747,33 +809,33 @@ class PlannerAgent:
         }
 
     def _generate_intelligent_plan(self, tasks: List[str], relevant_data: Dict, user_id: int) -> Dict:
-        system_prompt = """你是一个智能学习规划助手。根据用户的任务和现有的学习数据，生成合理的日程安排建议。
+        system_prompt = """You are an intelligent learning planning assistant. Based on the user's tasks and existing learning data, generate reasonable schedule suggestions.
 
-请考虑：
-1. 任务的优先级和复杂度
-2. 合理的时间分配
-3. 学习效率建议
-4. 具体的执行步骤
+Please consider:
+1. Task priority and complexity
+2. Reasonable time allocation
+3. Learning efficiency suggestions
+4. Specific execution steps
 
-用中文回复，格式清晰易读。"""
+Reply in English, clear and readable format."""
 
         tasks_text = "\n".join([f"- {task}" for task in tasks])
         assignments_text = "\n".join([
-            f"- {a.get('title', '')} (截止: {a.get('due_date')}, 状态: {a.get('status', 'pending')})"
+            f"- {a.get('title', '')} (due: {a.get('due_date')}, status: {a.get('status', 'pending')})"
             for a in relevant_data['assignments'][:10]
         ])
 
-        user_prompt = f"""请为以下学习任务生成日程安排：
+        user_prompt = f"""Please generate a schedule for the following learning tasks:
 
-待办任务：
+Pending tasks:
 {tasks_text}
 
-现有作业：
+Existing assignments:
 {assignments_text}
 
-时间范围：{relevant_data['date_range']['start'].strftime('%Y-%m-%d')} 到 {relevant_data['date_range']['end'].strftime('%Y-%m-%d')}
+Time range: {relevant_data['date_range']['start'].strftime('%Y-%m-%d')} to {relevant_data['date_range']['end'].strftime('%Y-%m-%d')}
 
-请提供一个实用的学习计划，包括时间安排和优先级建议。"""
+Please provide a practical learning plan, including time arrangements and priority suggestions."""
 
         ai_response = self.call_llm(system_prompt, user_prompt)
 
@@ -808,7 +870,7 @@ class PlannerAgent:
             'total_tasks': len(tasks),
             'upcoming_assignments': len(relevant_data['assignments']),
             'study_sessions': len(relevant_data['study_sessions']),
-            'date_range': f"{relevant_data['date_range']['start'].strftime('%Y-%m-%d')} 到 {relevant_data['date_range']['end'].strftime('%Y-%m-%d')}"
+            'date_range': f"{relevant_data['date_range']['start'].strftime('%Y-%m-%d')} to {relevant_data['date_range']['end'].strftime('%Y-%m-%d')}"
         })
 
         return ScheduleResult(schedule=schedule_items)
@@ -817,14 +879,14 @@ class PlannerAgent:
         schedule_items = []
         schedule_items.append({
             'type': 'info',
-            'content': '基于现有数据的日程安排（AI规划暂不可用）'
+            'content': 'Schedule based on existing data (AI planning not available)'
         })
         for i, task in enumerate(tasks):
             schedule_items.append({
                 'type': 'task',
                 'title': task,
                 'order': i + 1,
-                'suggested_time': f'第{i + 1}天'
+                'suggested_time': f'Day {i + 1}'
             })
         return ScheduleResult(schedule=schedule_items)
 
@@ -840,32 +902,32 @@ class PlannerAgent:
         return ScheduleResult(schedule=schedule_items)
 
     def _analyze_schedule_intent(self, query: str, date_range: str, user_id: int) -> Dict:
-        system_prompt = """你是一个智能学习规划助手。请分析用户的日程查询请求，理解其深层意图和需求。
+        system_prompt = """You are an intelligent learning planning assistant. Please analyze the user's schedule query request, understand their deep intentions and needs.
 
-请分析以下内容：
-1. 主要意图（考试准备、作业规划、学习安排、复习计划等）
-2. 时间紧迫程度
-3. 用户可能的隐藏需求
-4. 推荐的规划策略
+Please analyze the following:
+1. Main intent (exam preparation, assignment planning, learning arrangements, review plans, etc.)
+2. Time urgency level
+3. User's possible hidden needs
+4. Recommended planning strategies
 
-返回JSON格式：{
-    "intent": "考试准备|作业规划|学习安排|复习计划",
-    "urgency": "高|中|低",
+Return JSON format: {
+    "intent": "exam_preparation|assignment_planning|learning_arrangements|review_plans",
+    "urgency": "high|medium|low",
     "time_range": {"start": "...", "end": "..."},
     "hidden_needs": ["..."],
     "planning_strategy": "...",
-    "focus_courses": ["课程名"],
-    "priority_tasks": ["任务类型"]
+    "focus_courses": ["course names"],
+    "priority_tasks": ["task types"]
 }"""
 
         user_prompt = f"""
-用户查询: {query}
-时间范围: {date_range}
-用户ID: {user_id}
+User query: {query}
+Time range: {date_range}
+User ID: {user_id}
 
-当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+Current time: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
-请分析这个日程查询请求。
+Please analyze this schedule query request.
 """
 
         response = self.call_llm(system_prompt, user_prompt)
