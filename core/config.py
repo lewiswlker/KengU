@@ -2,9 +2,9 @@ import os
 
 class Settings:
     # LLM
-    LLM_API_KEY: str = "sk-4b9906b2fd1f4ca79f6e4a9c98528eb4"
-    LLM_API_ENDPOINT: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    LLM_MODEL_NAME: str = "qwen-plus"
+    LLM_API_KEY: str = ""
+    LLM_API_ENDPOINT: str = ""
+    LLM_MODEL_NAME: str = ""
 
     # Database (defaults can be overridden in `.env`)
     DB_USER: str = os.getenv("DB_USER", "root")
