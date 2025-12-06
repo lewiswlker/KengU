@@ -1,5 +1,7 @@
 # KengU
 
+[English](README.md) | [简体中文](README_zh.md)
+
 Your study partner at the University of Hong Kong.
 
 ![Backend](https://img.shields.io/badge/backend-FastAPI%20%2B%20RAG-green)
@@ -24,7 +26,6 @@ It combines multi-agent orchestration with retrieval-augmented generation (RAG) 
 - [RAG Pipeline](#rag-pipeline)
 - [Notes](#notes)
 
-> Looking for Chinese documentation? See the [Chinese README](README_zh.md).
 
 ## Features
 
@@ -69,8 +70,8 @@ The system is roughly split into three layers:
 1. Clone the repository and enter the project directory:
 
    ```bash
-   git clone <this-repo-url>
-   cd kengu
+   git clone https://github.com/lewiswlker/KengU.git
+   cd KengU
    ```
 
 2. Create and activate a virtual environment (recommended):
