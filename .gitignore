@@ -3,7 +3,6 @@ __pycache__/
 */__pycache__/
 knowledge_base/
 *.log
-*.md
 vectorbase/
 */.DS_Store
 .DS_Store
