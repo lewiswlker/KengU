@@ -68,8 +68,8 @@ KengU 是一个面向香港大学学生的智能学习助手，通过多智能�
 1. 克隆仓库并进入目录：
 
    ```bash
-   git clone <this-repo-url>
-   cd kengu
+   git clone https://github.com/lewiswlker/KengU.git
+   cd KengU
    ```
 
 2. 创建并激活虚拟环境（推荐）：
